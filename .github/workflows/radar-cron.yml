@@ -28,8 +28,9 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      # Optional: Instagram-Session-Cookie (siehe README). Fehlt das Secret,
-      # laeuft der IG-Agent wie bisher ohne Login (Best effort).
+      # Instagram: bevorzugt Apify (zuverlaessig); ohne APIFY_TOKEN faellt der Lauf
+      # auf gallery-dl mit optionalem Session-Cookie zurueck (siehe README).
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
       IG_SESSIONID: ${{ secrets.IG_SESSIONID }}
       DATEN_MODUS: supabase
     steps:

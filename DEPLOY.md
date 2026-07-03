@@ -12,7 +12,8 @@ gh secret set YT_API_KEY --body "$YT_API_KEY"
 gh secret set GEMINI_API_KEY --body "$GEMINI_API_KEY"
 gh secret set SUPABASE_URL --body "https://<projekt>.supabase.co"
 gh secret set SUPABASE_SERVICE_KEY --body "<service_role>"
-# optional: gh secret set IG_SESSIONID --body "<cookie>"
+gh secret set APIFY_TOKEN --body "$APIFY_TOKEN"   # Instagram-Scraping (zuverlässig)
+# optional: gh secret set IG_SESSIONID --body "<cookie>"  # nur als Apify-Alternative
 gh workflow enable radar-cron.yml
 gh workflow run radar-cron.yml   # erster manueller Lauf
 ```

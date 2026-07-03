@@ -554,8 +554,11 @@ def _stufe_c(video, aussage, positions_tabelle):
 # ---------------------------------------------------------------------------
 
 def _reichweite_score(video):
-    """log-skaliert: 100k Views ≈ 85, 1M ≈ 100; plus Velocity-Bonus (Views/Tag)."""
+    """log-skaliert: 100k Views ≈ 85, 1M ≈ 100; plus Velocity-Bonus (Views/Tag).
+    Instagram-Foto-Posts ohne Views: Likes×12 als Reichweiten-Proxy."""
     views = float(video.get("views") or 0)
+    if not views and video.get("plattform") == "instagram":
+        views = float(video.get("likes") or 0) * 12.0
     follower = float(video.get("kanal_follower") or 0)
     basis = max(views, follower / 10.0)
     punkte = 15.0 * math.log10(basis) + 10.0 if basis >= 1 else 0.0

@@ -101,7 +101,12 @@ def vorfilter(kandidaten, bestand_ids, limit=None):
         if kid in bestand_ids:
             stat["schon_bekannt"] += 1
             continue
-        if (k.get("views") or 0) < MINDEST_VIEWS:
+        # Reichweiten-Filter: Instagram-Foto-/Carousel-Posts haben keine Views —
+        # dort sind Likes der Reichweiten-Proxy (Like-Rate grob 5-8% => Faktor 12).
+        reichweite_proxy = k.get("views") or 0
+        if not reichweite_proxy and k.get("plattform") == "instagram":
+            reichweite_proxy = (k.get("likes") or 0) * 12
+        if reichweite_proxy < MINDEST_VIEWS:
             stat["zu_wenig_views"] += 1
             continue
         text = " ".join(filter(None, [k.get("titel"), k.get("caption")]))
