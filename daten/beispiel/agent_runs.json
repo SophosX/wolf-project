@@ -1,0 +1,87 @@
+[
+  {
+    "zeit": "2026-07-03T19:36:25.760Z",
+    "quelle": "youtube_claim_suche",
+    "gefunden": 42,
+    "neu": 6,
+    "analysiert": 6,
+    "geflaggt": 3,
+    "fehler": [],
+    "dauer_s": 148
+  },
+  {
+    "zeit": "2026-07-03T19:31:25.760Z",
+    "quelle": "youtube_watchlist",
+    "gefunden": 18,
+    "neu": 3,
+    "analysiert": 3,
+    "geflaggt": 2,
+    "fehler": [],
+    "dauer_s": 62
+  },
+  {
+    "zeit": "2026-07-03T19:26:25.760Z",
+    "quelle": "tiktok_watchlist",
+    "gefunden": 15,
+    "neu": 2,
+    "analysiert": 2,
+    "geflaggt": 1,
+    "fehler": [
+      "@fabiankowallik: TikTok meldet „keine Videos“ — Handle prüfen (Impersonation-Target fehlt?)"
+    ],
+    "dauer_s": 210
+  },
+  {
+    "zeit": "2026-07-03T19:21:25.760Z",
+    "quelle": "instagram_watchlist",
+    "gefunden": 0,
+    "neu": 0,
+    "analysiert": 0,
+    "geflaggt": 0,
+    "fehler": [
+      "Login-Wall bei @pamela_rf — Lauf übersprungen (best effort)",
+      "@sanaz.salehebrahimi: Profil nicht verifizierbar"
+    ],
+    "dauer_s": 45
+  },
+  {
+    "zeit": "2026-07-03T15:36:25.760Z",
+    "quelle": "youtube_claim_suche",
+    "gefunden": 40,
+    "neu": 2,
+    "analysiert": 2,
+    "geflaggt": 1,
+    "fehler": [],
+    "dauer_s": 141
+  },
+  {
+    "zeit": "2026-07-03T15:31:25.760Z",
+    "quelle": "tiktok_discovery",
+    "gefunden": 22,
+    "neu": 4,
+    "analysiert": 4,
+    "geflaggt": 1,
+    "fehler": [],
+    "dauer_s": 305
+  },
+  {
+    "zeit": "2026-07-03T11:36:25.760Z",
+    "quelle": "youtube_watchlist",
+    "gefunden": 18,
+    "neu": 0,
+    "analysiert": 0,
+    "geflaggt": 0,
+    "fehler": [],
+    "dauer_s": 58
+  },
+  {
+    "zeit": "2026-07-03T11:32:25.760Z",
+    "quelle": "instagram_watchlist",
+    "gefunden": 3,
+    "neu": 1,
+    "analysiert": 1,
+    "geflaggt": 0,
+    "fehler": [],
+    "dauer_s": 88
+  }
+]

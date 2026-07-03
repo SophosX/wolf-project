@@ -1,0 +1,66 @@
+# Wolf Radar — Scraper-Cron
+# Laeuft alle 4 Stunden (+ manuell via workflow_dispatch) und schreibt
+# Kandidaten + agent_run-Protokolle nach Supabase (DATEN_MODUS=supabase).
+# Auch bei Agenten-Fehlern schreibt lauf.py sein Protokoll — die App zeigt
+# Ausfaelle im Agenten-Status-Panel statt still zu scheitern.
+
+name: radar-cron
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"   # alle 4 Stunden (UTC)
+  workflow_dispatch: {}      # manueller Start im GitHub-UI
+
+# Nie zwei Laeufe parallel (Merge-Semantik schuetzt zwar, aber unnoetig)
+concurrency:
+  group: radar-cron
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      YT_API_KEY: ${{ secrets.YT_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      DATEN_MODUS: supabase
+    steps:
+      - name: Repo auschecken
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Abhaengigkeiten installieren
+        run: pip install --quiet yt-dlp gallery-dl requests
+
+      - name: ffmpeg bereitstellen (fuer yt-dlp-Untertitel)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Radar-Lauf
+        id: lauf
+        # lauf.py schreibt agent_runs selbst (auch bei Teilfehlern) und
+        # beendet nur mit Exit 1, wenn ueberhaupt nichts gefunden wurde.
+        run: python scraper/lauf.py
+
+      - name: Notfall-Protokoll bei hartem Absturz
+        # Greift nur, wenn lauf.py selbst gecrasht ist (z.B. SyntaxError,
+        # Netz komplett weg) und daher KEIN agent_run schreiben konnte.
+        if: failure()
+        env:
+          PYTHONPATH: scraper
+        run: |
+          python - <<'PY'
+          import speicher
+          speicher.speichere_agent_run({
+              "quelle": "cron",
+              "gefunden": 0, "neu": 0, "analysiert": 0, "geflaggt": 0,
+              "fehler": ["radar-cron: Lauf hart abgestuerzt — GitHub-Actions-Log pruefen"],
+              "dauer_s": 0,
+          })
+          print("Notfall-agent_run geschrieben")
+          PY

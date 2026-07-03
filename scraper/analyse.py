@@ -1,0 +1,776 @@
+# -*- coding: utf-8 -*-
+"""
+analyse.py — Gemini-Analyse-Pipeline für Wolf Radar.
+
+Vier Stufen pro Kandidat (siehe KONTRAKT.md):
+  Stufe A  Relevanz     — deutschsprachig? Ernährung/Fitness/Gesundheit? prüfbare Sachaussage?
+  Stufe B  Claim        — konkreteste prüfbare Aussage wörtlich extrahieren + Thema-Slug
+  Stufe C  Verdict      — konservativer Abgleich gegen Chris' belegte Positionen (Themenlandkarte)
+  Stufe D  Scoring      — deterministisch in Python (Kontrakt-Formel), KEIN LLM
+
+Öffentliche Schnittstellen:
+  analysiere_batch(kandidaten: list[dict], gelernt: dict) -> list[dict]
+  lerne_aus_feedback(videos: list[dict]) -> dict
+
+Gemini-Zugriff: REST via urllib (keine Zusatz-Dependencies), Key aus ENV GEMINI_API_KEY
+oder aus einer .env-Datei in einem übergeordneten Ordner. Retry mit Backoff bei 429/5xx.
+Fehler werden transparent geloggt statt still verschluckt.
+"""
+
+import json
+import logging
+import math
+import os
+import random
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+logger = logging.getLogger("wolf_radar.analyse")
+
+# ---------------------------------------------------------------------------
+# Konfiguration
+# ---------------------------------------------------------------------------
+
+GEMINI_MODELL = "gemini-2.5-flash"
+GEMINI_URL_VORLAGE = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{modell}:generateContent"
+)
+MAX_VERSUCHE = 5           # Gemini-Aufrufe: Wiederholungen bei 429/5xx
+BASIS_WARTEZEIT_S = 2.0    # exponentielles Backoff: 2, 4, 8, 16 …
+PAUSE_ZWISCHEN_CALLS_S = 0.4
+BATCH_GROESSE_STUFE_AB = 5   # Stufe A+B werden gebündelt geprüft (Kosten), Stufe C einzeln (Korrektheit)
+MAX_TRANSKRIPT_ZEICHEN = 6000
+MAX_CAPTION_ZEICHEN = 1500
+
+_WISSEN_ORDNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wissen")
+
+
+# ---------------------------------------------------------------------------
+# API-Key laden (ENV oder .env in übergeordneten Ordnern)
+# ---------------------------------------------------------------------------
+
+def _lies_env_datei(pfad):
+    """Liest eine simple KEY=VALUE .env-Datei; ignoriert Kommentare und Müllzeilen."""
+    werte = {}
+    try:
+        with open(pfad, "r", encoding="utf-8") as f:
+            for zeile in f:
+                zeile = zeile.strip()
+                if not zeile or zeile.startswith("#") or "=" not in zeile:
+                    continue
+                schluessel, _, wert = zeile.partition("=")
+                werte[schluessel.strip()] = wert.strip().strip('"').strip("'")
+    except OSError as fehler:
+        logger.debug(".env nicht lesbar (%s): %s", pfad, fehler)
+    return werte
+
+
+def lade_gemini_key():
+    """GEMINI_API_KEY aus ENV oder aus einer .env-Datei bis 6 Ordner über diesem Modul."""
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    ordner = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        env_pfad = os.path.join(ordner, ".env")
+        if os.path.isfile(env_pfad):
+            key = _lies_env_datei(env_pfad).get("GEMINI_API_KEY", "").strip()
+            if key:
+                return key
+        neuer_ordner = os.path.dirname(ordner)
+        if neuer_ordner == ordner:
+            break
+        ordner = neuer_ordner
+    raise RuntimeError(
+        "GEMINI_API_KEY fehlt: weder in der Umgebung noch in einer .env-Datei gefunden."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gemini-REST-Aufruf mit Retry/Backoff
+# ---------------------------------------------------------------------------
+
+def gemini_anfrage(prompt, system=None, schema=None, tools=None,
+                   temperatur=0.2, max_versuche=MAX_VERSUCHE):
+    """
+    Ein generateContent-Aufruf. Gibt das komplette Antwort-JSON (dict) zurück.
+
+    prompt      : User-Text (str)
+    system      : System-Instruktion (str, optional)
+    schema      : responseSchema für strukturierte JSON-Ausgabe (dict, optional)
+    tools       : z.B. [{"google_search": {}}] für Grounding (optional).
+                  Achtung: tools und schema schließen sich bei Gemini aus.
+    """
+    if schema is not None and tools:
+        raise ValueError("Gemini erlaubt tools (Grounding) und responseSchema nicht gleichzeitig.")
+
+    url = GEMINI_URL_VORLAGE.format(modell=GEMINI_MODELL)
+    koerper = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": temperatur},
+    }
+    if system:
+        koerper["systemInstruction"] = {"parts": [{"text": system}]}
+    if schema is not None:
+        koerper["generationConfig"]["responseMimeType"] = "application/json"
+        koerper["generationConfig"]["responseSchema"] = schema
+    if tools:
+        koerper["tools"] = tools
+
+    daten = json.dumps(koerper).encode("utf-8")
+    letzter_fehler = None
+
+    for versuch in range(1, max_versuche + 1):
+        anfrage = urllib.request.Request(
+            url,
+            data=daten,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": lade_gemini_key(),
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(anfrage, timeout=120) as antwort:
+                return json.loads(antwort.read().decode("utf-8"))
+        except urllib.error.HTTPError as fehler:
+            rumpf = ""
+            try:
+                rumpf = fehler.read().decode("utf-8", errors="replace")[:500]
+            except Exception:
+                pass
+            letzter_fehler = "HTTP {0}: {1}".format(fehler.code, rumpf)
+            if fehler.code in (429, 500, 502, 503, 504) and versuch < max_versuche:
+                wartezeit = BASIS_WARTEZEIT_S * (2 ** (versuch - 1)) + random.uniform(0, 1)
+                # Retry-After-Header respektieren, falls vorhanden
+                retry_after = fehler.headers.get("Retry-After") if fehler.headers else None
+                if retry_after:
+                    try:
+                        wartezeit = max(wartezeit, float(retry_after))
+                    except ValueError:
+                        pass
+                logger.warning("Gemini %s — Versuch %d/%d, warte %.1fs",
+                               letzter_fehler.split(":")[0], versuch, max_versuche, wartezeit)
+                time.sleep(wartezeit)
+                continue
+            raise RuntimeError("Gemini-Aufruf fehlgeschlagen: " + letzter_fehler)
+        except (urllib.error.URLError, TimeoutError, OSError) as fehler:
+            letzter_fehler = "Netzwerkfehler: {0}".format(fehler)
+            if versuch < max_versuche:
+                wartezeit = BASIS_WARTEZEIT_S * (2 ** (versuch - 1))
+                logger.warning("%s — Versuch %d/%d, warte %.1fs",
+                               letzter_fehler, versuch, max_versuche, wartezeit)
+                time.sleep(wartezeit)
+                continue
+            raise RuntimeError("Gemini-Aufruf fehlgeschlagen: " + letzter_fehler)
+
+    raise RuntimeError("Gemini-Aufruf fehlgeschlagen: " + str(letzter_fehler))
+
+
+def extrahiere_antwort_text(antwort):
+    """Holt den Text des ersten Kandidaten aus einer generateContent-Antwort."""
+    try:
+        kandidaten = antwort.get("candidates") or []
+        teile = kandidaten[0].get("content", {}).get("parts") or []
+        texte = [t.get("text", "") for t in teile if t.get("text")]
+        if not texte:
+            grund = kandidaten[0].get("finishReason", "unbekannt")
+            raise RuntimeError("Gemini-Antwort ohne Text (finishReason=" + str(grund) + ")")
+        return "".join(texte)
+    except (IndexError, KeyError, AttributeError):
+        raise RuntimeError("Gemini-Antwort hat unerwartete Struktur: " + json.dumps(antwort)[:300])
+
+
+def gemini_json(prompt, system=None, schema=None, temperatur=0.2):
+    """Bequemer Aufruf: strukturierte JSON-Antwort direkt als Python-Objekt."""
+    antwort = gemini_anfrage(prompt, system=system, schema=schema, temperatur=temperatur)
+    text = extrahiere_antwort_text(antwort)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise RuntimeError("Gemini lieferte kein gültiges JSON: " + text[:300])
+
+
+# ---------------------------------------------------------------------------
+# Themen-Katalog (aus mythen_katalog.py; robuster Fallback, weil parallel gebaut)
+# ---------------------------------------------------------------------------
+
+_FALLBACK_THEMEN = {
+    "abnehmen_kalorien":        {"name": "Abnehmen & Kaloriendefizit", "kerngewicht": 1.0},
+    "protein":                  {"name": "Protein & Nieren-Mythen", "kerngewicht": 1.0},
+    "suessstoffe":              {"name": "Süßstoffe & Aspartam", "kerngewicht": 1.0},
+    "zucker":                   {"name": "Zucker & 'Zucker ist Gift'", "kerngewicht": 0.9},
+    "mahlzeiten_mythen":        {"name": "Mahlzeiten-Mythen (Frühstück, Carbs abends …)", "kerngewicht": 0.95},
+    "detox_stoffwechsel":       {"name": "Detox, Entgiften, Stoffwechsel-Magie", "kerngewicht": 1.0},
+    "verarbeitete_lebensmittel": {"name": "Chemophobie & verarbeitete Lebensmittel", "kerngewicht": 0.9},
+    "supplements":              {"name": "Supplements & Wunder-Fatburner", "kerngewicht": 0.8},
+    "training_fettabbau":       {"name": "Training-Mythen mit Ernährungsbezug", "kerngewicht": 0.8},
+    "fasten":                   {"name": "Fasten & Intervallfasten", "kerngewicht": 0.85},
+    "abnehmspritze":            {"name": "Abnehmspritze & Medikamente", "kerngewicht": 0.7},
+    "sonstiges_ernaehrung":     {"name": "Sonstige Ernährungs-Claims", "kerngewicht": 0.6},
+}
+STANDARD_KERNGEWICHT = 0.7
+
+
+def _normalisiere_themen(roh):
+    """Bringt THEMEN aus mythen_katalog in die Form {slug: {name, kerngewicht}}."""
+    themen = {}
+    if isinstance(roh, dict):
+        for slug, wert in roh.items():
+            if isinstance(wert, dict):
+                gewicht = wert.get("kerngewicht", wert.get("gewicht", STANDARD_KERNGEWICHT))
+                name = wert.get("name", wert.get("titel", slug))
+            elif isinstance(wert, (int, float)):
+                gewicht, name = float(wert), slug
+            else:
+                gewicht, name = STANDARD_KERNGEWICHT, str(wert)
+            themen[str(slug)] = {"name": name, "kerngewicht": float(gewicht)}
+    elif isinstance(roh, (list, tuple)):
+        for eintrag in roh:
+            if isinstance(eintrag, dict) and eintrag.get("slug"):
+                themen[str(eintrag["slug"])] = {
+                    "name": eintrag.get("name", eintrag["slug"]),
+                    "kerngewicht": float(eintrag.get("kerngewicht",
+                                                     eintrag.get("gewicht", STANDARD_KERNGEWICHT))),
+                }
+    return themen
+
+
+def lade_themen():
+    """THEMEN aus mythen_katalog.py laden; Fallback-Katalog, wenn (noch) nicht vorhanden."""
+    try:
+        try:
+            import mythen_katalog  # Ausführung als Skript im scraper-Ordner
+        except ImportError:
+            from . import mythen_katalog  # Import als Paket
+        themen = _normalisiere_themen(getattr(mythen_katalog, "THEMEN", None))
+        if themen:
+            return themen
+        logger.warning("mythen_katalog.THEMEN leer/unbekanntes Format — nutze Fallback-Themen.")
+    except ImportError:
+        logger.warning("mythen_katalog.py nicht gefunden — nutze Fallback-Themen.")
+    except Exception as fehler:
+        logger.warning("mythen_katalog nicht ladbar (%s) — nutze Fallback-Themen.", fehler)
+    return dict(_FALLBACK_THEMEN)
+
+
+# ---------------------------------------------------------------------------
+# Wissens-Dateien: Positions-Tabelle aus der Themenlandkarte einbetten
+# ---------------------------------------------------------------------------
+
+def extrahiere_markdown_abschnitt(text, ueberschrift_prefix):
+    """
+    Schneidet aus Markdown den Abschnitt heraus, der mit einer Überschrift beginnt,
+    die mit ueberschrift_prefix anfängt (z.B. '## 2.'), bis zur nächsten Überschrift
+    gleicher oder höherer Ebene.
+    """
+    zeilen = text.splitlines()
+    ebene = ueberschrift_prefix.split(" ")[0]  # z.B. '##'
+    start = None
+    for i, zeile in enumerate(zeilen):
+        if zeile.strip().startswith(ueberschrift_prefix):
+            start = i
+            break
+    if start is None:
+        return ""
+    ende = len(zeilen)
+    for j in range(start + 1, len(zeilen)):
+        gestutzt = zeilen[j].strip()
+        # nächste Überschrift gleicher/höherer Ebene beendet den Abschnitt
+        if gestutzt.startswith("#") and gestutzt.split(" ")[0] and len(gestutzt.split(" ")[0]) <= len(ebene):
+            ende = j
+            break
+    return "\n".join(zeilen[start:ende]).strip()
+
+
+_FALLBACK_POSITIONEN = """Kern-Positionen von Christian Wolf (Kurzform):
+- Abnehmen: Kaloriendefizit plus High Protein ist die einzige Grundformel. FALSCH sind: Detox,
+  'Stoffwechsel ankurbeln' durch Wunder-Lebensmittel, 'Stoffwechsel schläft ein', Fasten-Magie,
+  pauschale Kalorien-Limits pro Mahlzeit, '5 kg in 5 Tagen'.
+- Protein: 1,5-2 g/kg; Protein schadet gesunden Nieren nicht (eGFR/Kreatinin/Albuminurie unverändert).
+- Süßstoffe: sicher und beim Abnehmen hilfreich (ADI-Logik); jede Aspartam-/Krebs-Panik ist falsch.
+- Zucker: kein Gift, sondern hochkalorisch; 'die Dosis macht das Gift'; suchtÄHNLICH, nicht Sucht.
+- Mahlzeiten: 'Frühstück ist die wichtigste Mahlzeit' ist ein Marketing-Mythos; Tageszeit von
+  Kohlenhydraten ist egal — es zählt die Gesamtkalorienbilanz.
+- Verarbeitung: an sich neutral; Zutatenlisten-Panik ist Chemophobie.
+- Training: Nachbrenneffekt vernachlässigbar (~10 % ≈ 30 kcal); kein 'Fettverbrennungspuls';
+  Fett wird nicht in Muskeln umgewandelt.
+"""
+
+
+def lade_positions_tabelle():
+    """Positions-Tabelle (Abschnitt 2 der Themenlandkarte) für den Verdict-Systemprompt."""
+    pfad = os.path.join(_WISSEN_ORDNER, "themenlandkarte.md")
+    try:
+        with open(pfad, "r", encoding="utf-8") as f:
+            text = f.read()
+        abschnitt = extrahiere_markdown_abschnitt(text, "## 2.")
+        if abschnitt:
+            return abschnitt
+        logger.warning("Positions-Tabelle (## 2.) in themenlandkarte.md nicht gefunden — Fallback.")
+    except OSError as fehler:
+        logger.warning("themenlandkarte.md nicht lesbar (%s) — Fallback-Positionen.", fehler)
+    return _FALLBACK_POSITIONEN
+
+
+# ---------------------------------------------------------------------------
+# Hilfen: Video-Kontext als Prompt-Text
+# ---------------------------------------------------------------------------
+
+def _kuerze(text, max_zeichen):
+    if not text:
+        return ""
+    text = str(text)
+    if len(text) <= max_zeichen:
+        return text
+    return text[:max_zeichen] + " …[gekürzt]"
+
+
+def _video_kontext(video):
+    """Kompakter, klar gelabelter Kontextblock für die Prompts."""
+    teile = [
+        "ID: " + str(video.get("id", "?")),
+        "Plattform: " + str(video.get("plattform", "?")),
+        "Titel: " + _kuerze(video.get("titel"), 300),
+        "Kanal: " + str(video.get("kanal", "?")),
+        "Views: " + str(video.get("views", "?")),
+        "Caption: " + (_kuerze(video.get("caption"), MAX_CAPTION_ZEICHEN) or "(keine)"),
+        "Transkript: " + (_kuerze(video.get("transkript"), MAX_TRANSKRIPT_ZEICHEN) or "(keins)"),
+    ]
+    return "\n".join(teile)
+
+
+def _tage_seit(iso_zeit):
+    """Tage seit einem ISO-Zeitstempel; None wenn nicht parsebar."""
+    if not iso_zeit:
+        return None
+    try:
+        roh = str(iso_zeit).replace("Z", "+00:00")
+        zeitpunkt = datetime.fromisoformat(roh)
+        if zeitpunkt.tzinfo is None:
+            zeitpunkt = zeitpunkt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - zeitpunkt
+        return max(delta.total_seconds() / 86400.0, 0.0)
+    except (ValueError, TypeError):
+        logger.debug("Zeitstempel nicht parsebar: %r", iso_zeit)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Stufe A + B: Relevanz-Filter + Claim-Extraktion (gebündelt, mit ID-Echo)
+# ---------------------------------------------------------------------------
+
+def _schema_stufe_ab(themen_slugs):
+    return {
+        "type": "OBJECT",
+        "properties": {
+            "ergebnisse": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "id": {"type": "STRING", "description": "exakt die übergebene Video-ID"},
+                        "deutsch": {"type": "BOOLEAN"},
+                        "themenbezug": {"type": "BOOLEAN",
+                                        "description": "Ernährung/Fitness/Gesundheit?"},
+                        "sachaussage": {"type": "BOOLEAN",
+                                        "description": "prüfbare Sachaussage vorhanden (nicht bloß Meinung/Werbung/Rezept)?"},
+                        "aussage": {"type": "STRING",
+                                    "description": "konkreteste prüfbare Aussage, möglichst wörtlich"},
+                        "thema": {"type": "STRING", "enum": themen_slugs},
+                        "begruendung": {"type": "STRING"},
+                    },
+                    "required": ["id", "deutsch", "themenbezug", "sachaussage", "begruendung"],
+                },
+            }
+        },
+        "required": ["ergebnisse"],
+    }
+
+
+_SYSTEM_STUFE_AB = """Du bist der Vorfilter des 'Wolf Radar' — einer App, die für den deutschen
+Fitness-Creator Christian Wolf Videos mit Ernährungs-Falschinformationen findet.
+
+Prüfe JEDEN übergebenen Video-Kandidaten auf genau drei Kriterien:
+1. deutsch: Ist der Inhalt (Titel/Caption/Transkript) deutschsprachig?
+2. themenbezug: Geht es um Ernährung, Abnehmen, Fitness oder Gesundheit?
+3. sachaussage: Enthält das Video mindestens eine KONKRETE, PRÜFBARE Sachaussage über
+   Ernährung/Gesundheit? (NICHT ausreichend: bloße Meinung, Geschmacksurteil, reine Werbung,
+   reines Rezept ohne Gesundheits-Behauptung, persönlicher Erfahrungsbericht ohne
+   verallgemeinernde Behauptung.)
+
+Wenn alle drei Kriterien erfüllt sind, zusätzlich:
+- aussage: Extrahiere die KERNBEHAUPTUNG, die das Video dem Zuschauer verkauft — also das
+  zentrale Versprechen/These (oft im Titel angeteasert und im Transkript ausgeführt), NICHT
+  einen beiläufigen Nebensatz oder ein referiertes Studien-Detail. Beruft sich das Video auf
+  eine Studie, extrahiere die SCHLUSSFOLGERUNG, die daraus fürs Publikum gezogen wird
+  (z. B. 'Mit diesem Trick verlierst du gezielt Bauchfett'), nicht den Studienbericht selbst.
+  Möglichst wörtlich (Zitat vor Paraphrase), als VOLLSTÄNDIGER Satz von maximal ~220 Zeichen —
+  niemals mitten im Wort oder Satz abschneiden.
+- thema: Ordne die Aussage dem passendsten Themen-Slug aus der erlaubten Liste zu.
+
+Wichtig: In diesem Schritt NICHT bewerten, ob die Aussage wahr oder falsch ist —
+auch Aufklärungs-/Debunk-Videos haben eine prüfbare Sachaussage und passieren diesen Filter.
+Gib für jede übergebene ID GENAU EIN Ergebnis zurück und übernimm die ID unverändert."""
+
+
+def _stufe_ab_batch(kandidaten, themen_slugs):
+    """Führt Stufe A+B für eine Gruppe Kandidaten in einem Gemini-Aufruf aus."""
+    bloecke = []
+    for video in kandidaten:
+        bloecke.append("=== KANDIDAT ===\n" + _video_kontext(video))
+    prompt = "\n\n".join(bloecke)
+    daten = gemini_json(prompt, system=_SYSTEM_STUFE_AB,
+                        schema=_schema_stufe_ab(themen_slugs), temperatur=0.1)
+    ergebnisse = {e.get("id"): e for e in daten.get("ergebnisse", [])}
+    fehlend = [v.get("id") for v in kandidaten if v.get("id") not in ergebnisse]
+    if fehlend:
+        raise RuntimeError("Stufe A/B: keine Antwort für IDs " + ", ".join(map(str, fehlend)))
+    return ergebnisse
+
+
+def _stufe_ab(kandidaten, themen_slugs):
+    """
+    Stufe A+B mit Batching; fällt bei Inkonsistenzen auf Einzel-Aufrufe zurück.
+    Rückgabe: {video_id: ergebnis_dict}
+    """
+    ergebnisse = {}
+    for i in range(0, len(kandidaten), BATCH_GROESSE_STUFE_AB):
+        gruppe = kandidaten[i:i + BATCH_GROESSE_STUFE_AB]
+        try:
+            ergebnisse.update(_stufe_ab_batch(gruppe, themen_slugs))
+        except Exception as fehler:
+            logger.warning("Stufe A/B Batch fehlgeschlagen (%s) — versuche Einzelaufrufe.", fehler)
+            for video in gruppe:
+                try:
+                    ergebnisse.update(_stufe_ab_batch([video], themen_slugs))
+                except Exception as einzel_fehler:
+                    logger.error("Stufe A/B endgültig fehlgeschlagen für %s: %s",
+                                 video.get("id"), einzel_fehler)
+        time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+    return ergebnisse
+
+
+# ---------------------------------------------------------------------------
+# Stufe C: Verdict (konservativ, gegen Chris' Positionen; Debunk-Erkennung)
+# ---------------------------------------------------------------------------
+
+_SCHEMA_VERDICT = {
+    "type": "OBJECT",
+    "properties": {
+        "verdict": {"type": "STRING", "enum": ["klar_falsch", "strittig", "korrekt"]},
+        "konfidenz": {"type": "NUMBER", "description": "0 bis 1"},
+        "begruendung": {"type": "STRING", "description": "genau ein Satz"},
+        "schadenspotential": {"type": "INTEGER", "description": "1 (harmlos) bis 5 (gefährlich)"},
+        "ist_debunk": {"type": "BOOLEAN",
+                       "description": "true, wenn das VIDEO den Mythos widerlegt statt ihn zu verbreiten"},
+    },
+    "required": ["verdict", "konfidenz", "begruendung", "schadenspotential", "ist_debunk"],
+}
+
+
+def _system_verdict(positions_tabelle):
+    return """Du bist der konservative Faktenprüfer des 'Wolf Radar' für den Fitness-Creator
+Christian Wolf. Du bewertest, ob die extrahierte Aussage eines Videos eine klare
+Ernährungs-Falschinformation ist, gegen die Chris ein Reaktionsvideo machen würde.
+
+CHRIS' BELEGTE POSITIONEN (verbindlicher Maßstab — nur was hier gedeckt ist, darf
+'klar_falsch' werden):
+
+""" + positions_tabelle + """
+
+BEWERTUNGSREGELN (streng konservativ):
+1. verdict = "klar_falsch" NUR, wenn die Aussage wissenschaftlich EINDEUTIG WIDERLEGT ist
+   UND von Chris' Positionen oben gedeckt wird. Im Zweifel NIE klar_falsch.
+   Achtung Unterschied: 'nicht belegt' ist NICHT dasselbe wie 'widerlegt' — eine bloß
+   unbelegte oder übertriebene Behauptung ist strittig, nicht klar_falsch.
+2. verdict = "strittig", wenn die Evidenz gemischt/unklar ist ('kann sein, muss aber nicht').
+   Insbesondere: Überlegenheits-Vergleiche von Diät-Methoden ('X ist besser als Y', z.B.
+   Intervallfasten vs. klassische Diät, Low Carb vs. Low Fat) sind IMMER strittig, denn bei
+   gleichem Kaloriendefizit zeigen Metaanalysen Gleichwertigkeit — die behauptete Überlegenheit
+   ist weder belegt noch in jedem Kontext eindeutig widerlegt. Das gilt auch dann, wenn im Video
+   zusätzlich ein fragwürdiger Mechanismus als Begründung genannt wird: Der KERN der Botschaft
+   (der Methoden-Vergleich) bestimmt das Verdict.
+3. verdict = "korrekt", wenn die Aussage wissenschaftlich haltbar ist.
+KALIBRIER-BEISPIELE:
+- 'Kohlenhydrate nach 18 Uhr machen dick, weil der Stoffwechsel abends schläft'
+  → klar_falsch (Mechanismus eindeutig widerlegt; nur die Gesamtkalorienbilanz zählt).
+- 'Süßstoffe verursachen Krebs' → klar_falsch (EFSA/ADI-Datenlage eindeutig).
+- 'Intervallfasten ist besser als jede normale Diät' → strittig (Methoden-Vergleich;
+  Metaanalysen zeigen bei gleichem Defizit ähnliche Ergebnisse).
+- 'Frühstück auslassen ist ungesund' → strittig (Evidenz gemischt).
+3b. STUDIEN-REFERENZEN: Beruft sich das Video auf eine konkrete Studie, bewerte die dem
+   Zuschauer VERKAUFTE SCHLUSSFOLGERUNG, nicht die Existenz der Studie. Ist die Schlussfolgerung
+   durch etablierten Konsens klar widerlegt (z. B. gezielte lokale Fettverbrennung /
+   'Spot Reduction', 'Fett wird zu Muskeln'), darf sie klar_falsch sein — setze die konfidenz
+   dann aber auf höchstens 0.85, weil die referenzierte Studie selbst nicht vorliegt und
+   geprüft werden kann. Ein korrektes Studien-Referat ohne eigene irreführende
+   Schlussfolgerung ist "korrekt".
+4. DEBUNK-ERKENNUNG (sehr wichtig): Wenn das VIDEO den Mythos WIDERLEGT oder aufklärt
+   (typisch: seriöse Medien/Wissenschafts-Formate, Fragezeichen-Titel mit aufklärendem Inhalt,
+   Formulierungen wie 'stimmt das wirklich?', 'die Studienlage zeigt aber …'), dann verbreitet
+   es KEINE Falschinformation: setze ist_debunk = true und verdict = "korrekt" — auch wenn der
+   Titel den Mythos wörtlich zitiert. Beurteile die POSITION DES VIDEOS, nicht den Mythos selbst.
+5. konfidenz: Wie sicher bist du im Verdict (0-1)? Sei ehrlich, nicht gefällig.
+6. begruendung: GENAU EIN Satz, warum falsch/strittig/korrekt (deutsch, konkret, mit Fakt).
+7. schadenspotential 1-5: 5 = akute Gesundheitsgefahr oder gefährliche Therapie-Abraten,
+   4 = Gesundheitsangst ohne Grundlage oder Abnehm-Sabotage mit Kauffolgen,
+   3 = typischer Abnehm-Mythos, 2 = eher harmloser Irrtum, 1 = kosmetisch."""
+
+
+def _stufe_c(video, aussage, positions_tabelle):
+    prompt = (
+        "VIDEO-KONTEXT:\n" + _video_kontext(video) +
+        "\n\nEXTRAHIERTE AUSSAGE (zu bewerten):\n\"" + str(aussage) + "\"\n\n"
+        "Bewerte konservativ nach den Regeln im Systemprompt."
+    )
+    daten = gemini_json(prompt, system=_system_verdict(positions_tabelle),
+                        schema=_SCHEMA_VERDICT, temperatur=0.1)
+    # Werte härten
+    daten["konfidenz"] = max(0.0, min(1.0, float(daten.get("konfidenz", 0.0))))
+    daten["schadenspotential"] = int(max(1, min(5, int(daten.get("schadenspotential", 1)))))
+    if daten.get("verdict") not in ("klar_falsch", "strittig", "korrekt"):
+        raise RuntimeError("Ungültiges Verdict: " + str(daten.get("verdict")))
+    # Sicherheitsnetz: Debunk kann nie klar_falsch sein
+    if daten.get("ist_debunk") and daten["verdict"] == "klar_falsch":
+        logger.info("Debunk-Sicherheitsnetz greift für %s — Verdict auf korrekt gesetzt.",
+                    video.get("id"))
+        daten["verdict"] = "korrekt"
+    return daten
+
+
+# ---------------------------------------------------------------------------
+# Stufe D: Scoring — deterministisch nach Kontrakt-Formel
+# ---------------------------------------------------------------------------
+
+def _reichweite_score(video):
+    """log-skaliert: 100k Views ≈ 85, 1M ≈ 100; plus Velocity-Bonus (Views/Tag)."""
+    views = float(video.get("views") or 0)
+    follower = float(video.get("kanal_follower") or 0)
+    basis = max(views, follower / 10.0)
+    punkte = 15.0 * math.log10(basis) + 10.0 if basis >= 1 else 0.0
+    tage = _tage_seit(video.get("veroeffentlicht"))
+    velocity = views / max(tage or 14.0, 1.0)
+    bonus = min(15.0, 3.0 * math.log10(velocity + 1.0)) if velocity > 0 else 0.0
+    return int(round(max(0.0, min(100.0, punkte + bonus))))
+
+
+def _relevanz_score(thema_slug, konfidenz, schadenspotential, gelernt, themen):
+    """kerngewicht*100 × konfidenz × (0.6+0.08*schaden) × (1+0.3*themen_boost)."""
+    kerngewicht = themen.get(thema_slug, {}).get("kerngewicht", STANDARD_KERNGEWICHT)
+    boost_roh = ((gelernt or {}).get("themen_boost") or {}).get(thema_slug, 0.0)
+    try:
+        boost = max(-1.0, min(1.0, float(boost_roh)))
+    except (TypeError, ValueError):
+        boost = 0.0
+    wert = (kerngewicht * 100.0) * konfidenz * (0.6 + 0.08 * schadenspotential) * (1.0 + 0.3 * boost)
+    return int(round(max(0.0, min(100.0, wert))))
+
+
+def _tauglichkeit_score(video):
+    """Kurzformat<90s +25, Watchlist +30, <14 Tage alt +25, Transkript vorhanden +20."""
+    punkte = 0
+    dauer = video.get("dauer_s")
+    if dauer and 0 < float(dauer) < 90:
+        punkte += 25
+    if video.get("quelle") == "watchlist":
+        punkte += 30
+    tage = _tage_seit(video.get("veroeffentlicht"))
+    if tage is not None and tage < 14:
+        punkte += 25
+    if video.get("transkript"):
+        punkte += 20
+    return min(punkte, 100)
+
+
+def berechne_scores(video, verdict_daten, thema_slug, gelernt, themen):
+    """Stufe D komplett: Teil-Scores + Gesamt-Score nach Kontrakt (0.4/0.4/0.2)."""
+    reichweite = _reichweite_score(video)
+    relevanz = _relevanz_score(thema_slug, verdict_daten["konfidenz"],
+                               verdict_daten["schadenspotential"], gelernt, themen)
+    tauglichkeit = _tauglichkeit_score(video)
+    gesamt = int(round(0.4 * reichweite + 0.4 * relevanz + 0.2 * tauglichkeit))
+    return gesamt, {"reichweite": reichweite, "relevanz": relevanz, "tauglichkeit": tauglichkeit}
+
+
+# ---------------------------------------------------------------------------
+# Öffentlich: analysiere_batch
+# ---------------------------------------------------------------------------
+
+def _markiere_verworfen(video, verdict, begruendung, aussage=None, thema=None, ist_debunk=False):
+    """Verworfene Kandidaten IN PLACE annotieren (status=archiv + konkreter Grund),
+    damit Aufrufer sie transparent speichern können statt sie still zu verlieren."""
+    video["status"] = "archiv"
+    video["claim"] = {
+        "aussage": aussage,
+        "verdict": ("debunk" if ist_debunk else verdict),
+        "konfidenz": None,
+        "begruendung": begruendung,
+        "thema": thema,
+    }
+
+
+def analysiere_batch(kandidaten, gelernt):
+    """
+    Analysiert Kandidaten-Videos in vier Stufen. Gibt NUR die Überlebenden zurück —
+    angereichert um claim, score, scores und status (inbox | strittig).
+
+    kandidaten: Liste von video-dicts nach Kontrakt (mind. id, titel; caption/transkript optional)
+    gelernt   : einstellungen.gelernt ({"themen_boost": {...}, "notizen": [...]}) oder {}
+    """
+    if not kandidaten:
+        return []
+    gelernt = gelernt or {}
+    themen = lade_themen()
+    themen_slugs = sorted(themen.keys())
+    positions_tabelle = lade_positions_tabelle()
+
+    logger.info("Analyse startet: %d Kandidaten, %d Themen-Slugs.",
+                len(kandidaten), len(themen_slugs))
+
+    # --- Stufe A+B ---------------------------------------------------------
+    ab_ergebnisse = _stufe_ab(kandidaten, themen_slugs)
+
+    ueberlebende = []
+    for video in kandidaten:
+        vid = video.get("id")
+        e = ab_ergebnisse.get(vid)
+        if e is None:
+            logger.error("Kandidat %s: keine Stufe-A/B-Antwort — wird übersprungen (nicht verworfen).", vid)
+            continue
+        if not (e.get("deutsch") and e.get("themenbezug") and e.get("sachaussage")):
+            logger.info("Verworfen (Stufe A) %s: deutsch=%s themenbezug=%s sachaussage=%s — %s",
+                        vid, e.get("deutsch"), e.get("themenbezug"), e.get("sachaussage"),
+                        e.get("begruendung", ""))
+            _markiere_verworfen(video, "aussortiert",
+                                e.get("begruendung") or "Kein Themenbezug oder keine prüfbare Sachaussage.")
+            continue
+        aussage = (e.get("aussage") or "").strip()
+        if not aussage:
+            logger.info("Verworfen (Stufe B) %s: keine konkrete Aussage extrahierbar.", vid)
+            _markiere_verworfen(video, "aussortiert", "Keine konkrete prüfbare Aussage extrahierbar.")
+            continue
+        thema = e.get("thema") if e.get("thema") in themen else "sonstiges_ernaehrung"
+        ueberlebende.append((video, aussage, thema))
+
+    logger.info("Stufe A/B überstanden: %d von %d.", len(ueberlebende), len(kandidaten))
+
+    # --- Stufe C + D --------------------------------------------------------
+    ergebnis_liste = []
+    for video, aussage, thema in ueberlebende:
+        vid = video.get("id")
+        try:
+            verdict_daten = _stufe_c(video, aussage, positions_tabelle)
+        except Exception as fehler:
+            logger.error("Stufe C fehlgeschlagen für %s: %s — Kandidat wird übersprungen.", vid, fehler)
+            continue
+        time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+
+        verdict = verdict_daten["verdict"]
+        konfidenz = verdict_daten["konfidenz"]
+        if verdict == "korrekt":
+            logger.info("Verworfen (Stufe C) %s: korrekt%s — %s", vid,
+                        " (Debunk)" if verdict_daten.get("ist_debunk") else "",
+                        verdict_daten.get("begruendung", ""))
+            _markiere_verworfen(video, "korrekt",
+                                verdict_daten.get("begruendung", "Aussage ist wissenschaftlich haltbar."),
+                                aussage=aussage, thema=thema,
+                                ist_debunk=bool(verdict_daten.get("ist_debunk")))
+            continue
+
+        # Status nach Kontrakt: klar_falsch + Konfidenz >= 0.75 → inbox; sonst strittig
+        if verdict == "klar_falsch" and konfidenz >= 0.75:
+            status = "inbox"
+        else:
+            if verdict == "klar_falsch":
+                logger.info("%s: klar_falsch, aber Konfidenz %.2f < 0.75 → strittig (konservativ).",
+                            vid, konfidenz)
+                verdict = "strittig"
+            status = "strittig"
+
+        score, scores = berechne_scores(video, verdict_daten, thema, gelernt, themen)
+
+        angereichert = dict(video)
+        angereichert["status"] = status
+        angereichert["score"] = score
+        angereichert["scores"] = scores
+        angereichert["claim"] = {
+            "aussage": aussage,
+            "verdict": verdict,
+            "konfidenz": round(konfidenz, 2),
+            "begruendung": verdict_daten["begruendung"],
+            "thema": thema,
+        }
+        ergebnis_liste.append(angereichert)
+        logger.info("Behalten %s: %s (%.2f) → status=%s score=%d thema=%s",
+                    vid, verdict, konfidenz, status, score, thema)
+
+    ergebnis_liste.sort(key=lambda v: v.get("score", 0), reverse=True)
+    logger.info("Analyse fertig: %d von %d Kandidaten behalten.",
+                len(ergebnis_liste), len(kandidaten))
+    return ergebnis_liste
+
+
+# ---------------------------------------------------------------------------
+# Öffentlich: lerne_aus_feedback
+# ---------------------------------------------------------------------------
+
+_SCHEMA_NOTIZEN = {
+    "type": "OBJECT",
+    "properties": {
+        "notizen": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"},
+            "description": "2-3 kurze Sätze, was Chris am Radar-Output mag/nicht mag",
+        }
+    },
+    "required": ["notizen"],
+}
+
+_SYSTEM_NOTIZEN = """Du fasst Feedback-Kommentare von Christian Wolf zu seiner Falschinfo-Radar-App
+zusammen. Jeder Kommentar ist markiert mit [aktion / thema-slug]. Destilliere daraus 2-3 kurze,
+konkrete Merksätze auf Deutsch, die künftige Video-Auswahl und Skript-Generierung steuern
+(z.B. 'Chris will größere Accounts, kleine Kanäle langweilen ihn.').
+Keine Wiederholung der Rohkommentare, keine Floskeln."""
+
+BOOST_SCHRITT = 0.25  # pro Annahme +0.25, pro Ablehnung -0.25, gedeckelt auf [-1, 1]
+
+
+def lerne_aus_feedback(videos):
+    """
+    Aggregiert Feedback zu einstellungen.gelernt:
+      themen_boost: {slug: -1..1} — plus je angenommen, minus je abgelehnt
+      notizen:      2-3 Sätze via Gemini aus den Freitext-Kommentaren
+    """
+    zaehler = {}
+    kommentare = []
+    for video in videos or []:
+        slug = ((video.get("claim") or {}).get("thema")) or "sonstiges_ernaehrung"
+        for fb in video.get("feedback") or []:
+            aktion = fb.get("aktion")
+            if aktion in ("angenommen", "abgelehnt"):
+                eintrag = zaehler.setdefault(slug, {"angenommen": 0, "abgelehnt": 0})
+                eintrag[aktion] += 1
+            kommentar = (fb.get("kommentar") or "").strip()
+            if kommentar:
+                kommentare.append("[" + str(aktion or "?") + " / " + slug + "] " + kommentar)
+
+    themen_boost = {}
+    for slug, z in zaehler.items():
+        roh = BOOST_SCHRITT * (z["angenommen"] - z["abgelehnt"])
+        themen_boost[slug] = round(max(-1.0, min(1.0, roh)), 2)
+
+    notizen = []
+    if kommentare:
+        try:
+            daten = gemini_json("FEEDBACK-KOMMENTARE:\n" + "\n".join(kommentare[:100]),
+                                system=_SYSTEM_NOTIZEN, schema=_SCHEMA_NOTIZEN, temperatur=0.3)
+            notizen = [n.strip() for n in daten.get("notizen", []) if n and n.strip()][:3]
+        except Exception as fehler:
+            logger.error("Notizen-Zusammenfassung fehlgeschlagen: %s — notizen bleiben leer.", fehler)
+
+    logger.info("Feedback gelernt: %d Themen-Boosts, %d Notizen aus %d Kommentaren.",
+                len(themen_boost), len(notizen), len(kommentare))
+    return {"themen_boost": themen_boost, "notizen": notizen}

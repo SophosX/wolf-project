@@ -1,0 +1,25 @@
+# Abhängigkeiten
+node_modules/
+
+# Next.js Build
+.next/
+out/
+
+# Umgebungsvariablen (nie committen!)
+.env
+.env.local
+.env*.local
+
+# Lokale Daten (Quelle der Wahrheit im Lokal-Modus) — nur Beispiel-Fixtures sind versioniert
+daten/*.json
+daten/.videos.lock
+!daten/beispiel/
+
+# Python (Scraper)
+__pycache__/
+*.pyc
+.venv/
+
+# System
+.DS_Store
+*.log
