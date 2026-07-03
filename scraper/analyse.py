@@ -473,8 +473,11 @@ _SCHEMA_VERDICT = {
         "schadenspotential": {"type": "INTEGER", "description": "1 (harmlos) bis 5 (gefährlich)"},
         "ist_debunk": {"type": "BOOLEAN",
                        "description": "true, wenn das VIDEO den Mythos widerlegt statt ihn zu verbreiten"},
+        "aktualitaetsabhaengig": {"type": "BOOLEAN",
+                                  "description": "true, wenn die Aussage von einem aktuellen Ereignis abhängt (neue Studie, Behörden-Veröffentlichung, News), das nur mit Websuche prüfbar wäre"},
     },
-    "required": ["verdict", "konfidenz", "begruendung", "schadenspotential", "ist_debunk"],
+    "required": ["verdict", "konfidenz", "begruendung", "schadenspotential", "ist_debunk",
+                 "aktualitaetsabhaengig"],
 }
 
 
@@ -515,6 +518,12 @@ KALIBRIER-BEISPIELE:
    dann aber auf höchstens 0.85, weil die referenzierte Studie selbst nicht vorliegt und
    geprüft werden kann. Ein korrektes Studien-Referat ohne eigene irreführende
    Schlussfolgerung ist "korrekt".
+3c. AKTUALITÄTS-REGEL (kritisch): Dein Wissen ist NICHT tagesaktuell. Wenn die Aussage von
+   einem aktuellen Ereignis abhängt — eine neue Studie, eine frische Behörden-Veröffentlichung
+   (EFSA/BfR/WHO), eine News-Meldung ('hat sich heute geäußert', 'neue Bewertung erschienen') —
+   kannst du sie aus dem Gedächtnis WEDER bestätigen noch widerlegen. Setze dann
+   aktualitaetsabhaengig = true und NIEMALS verdict = "klar_falsch" (höchstens strittig).
+   Solche Fälle klärt der Faktencheck mit Websuche, nicht du.
 4. DEBUNK-ERKENNUNG (sehr wichtig): Wenn das VIDEO den Mythos WIDERLEGT oder aufklärt
    (typisch: seriöse Medien/Wissenschafts-Formate, Fragezeichen-Titel mit aufklärendem Inhalt,
    Formulierungen wie 'stimmt das wirklich?', 'die Studienlage zeigt aber …'), dann verbreitet
@@ -546,6 +555,13 @@ def _stufe_c(video, aussage, positions_tabelle):
         logger.info("Debunk-Sicherheitsnetz greift für %s — Verdict auf korrekt gesetzt.",
                     video.get("id"))
         daten["verdict"] = "korrekt"
+    # Sicherheitsnetz: News-/ereignisabhängige Aussagen sind ohne Websuche nicht widerlegbar
+    if daten.get("aktualitaetsabhaengig") and daten["verdict"] == "klar_falsch":
+        logger.info("Aktualitäts-Sicherheitsnetz greift für %s — klar_falsch → strittig.",
+                    video.get("id"))
+        daten["verdict"] = "strittig"
+        daten["begruendung"] = ("[Per Faktencheck mit Websuche prüfen — ereignisabhängige Aussage] "
+                                + daten.get("begruendung", ""))
     return daten
 
 
