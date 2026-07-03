@@ -7,7 +7,13 @@ a) Watchlist-Profile: yt-dlp --flat-playlist --dump-single-json auf
    view_count/like_count/timestamp direkt aus den Playlist-Entries.
    Handle-Verifikation: 404/Fehler landet sichtbar in der fehler-Liste.
 
-b) Fuer Kandidaten mit > 50.000 Views: Einzelvideo-Details nachladen
+b) Discovery: kuratierte Liste grosser deutscher Ernaehrungs-/Fitness-Profile
+   (scraper/discovery.json, Handles per yt-dlp verifiziert). Nach der
+   Watchlist werden pro Discovery-Profil die neuesten 15 Videos gescannt,
+   weitergereicht werden nur Kandidaten mit > 20.000 Views.
+   Abschaltbar per ENV RADAR_TIKTOK_DISCOVERY=0.
+
+c) Fuer Kandidaten mit > 50.000 Views: Einzelvideo-Details nachladen
    (yt-dlp -J) fuer vollstaendigen Titel/Beschreibung.
 
 Rate-schonend: sleep zwischen allen yt-dlp-Aufrufen.
@@ -25,6 +31,16 @@ DETAIL_MAX_VIDEOS = int(os.environ.get("RADAR_TIKTOK_DETAILS_MAX", "10"))
 SLEEP_ZWISCHEN_CALLS = 3   # Sekunden — TikTok blockt aggressive Clients
 PROFIL_TIMEOUT = 120
 DETAIL_TIMEOUT = 60
+
+# Discovery: kuratierte grosse DE-Ernaehrungs/Fitness-Profile (verifizierte Handles)
+DISCOVERY_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "discovery.json")
+DISCOVERY_MAX_VIDEOS = 15      # nur die neuesten 15 Videos pro Discovery-Profil
+DISCOVERY_MIN_VIEWS = 20000    # nur Kandidaten > 20k Views weiterreichen
+
+
+def discovery_aktiv():
+    return (os.environ.get("RADAR_TIKTOK_DISCOVERY", "1").strip() or "1") != "0"
 
 
 def _jetzt_iso():
@@ -72,7 +88,7 @@ def _erste_zeile(text):
     return None
 
 
-def _roh_kandidat(entry, handle, profil_name, follower):
+def _roh_kandidat(entry, handle, profil_name, follower, quelle="watchlist"):
     """Playlist-Entry -> rohes video-Dict nach Kontrakt."""
     video_id = str(entry.get("id") or "")
     if not video_id:
@@ -98,7 +114,7 @@ def _roh_kandidat(entry, handle, profil_name, follower):
         "caption": caption,
         "transkript": None,
         "gefunden_am": _jetzt_iso(),
-        "quelle": "watchlist",
+        "quelle": quelle,
         "status": "inbox",
         "score": 0,
         "scores": {},
@@ -108,15 +124,17 @@ def _roh_kandidat(entry, handle, profil_name, follower):
     }
 
 
-def profil_scannen(handle, fehler):
+def profil_scannen(handle, fehler, max_eintraege=MAX_EINTRAEGE_PRO_PROFIL,
+                   quelle="watchlist"):
     """
-    (a) Ein Watchlist-Profil scannen. Rueckgabe: Liste roher Kandidaten.
+    (a) Ein Profil scannen (Watchlist oder Discovery).
+    Rueckgabe: Liste roher Kandidaten.
     Existiert das Profil nicht (404 o.ae.), landet das in der fehler-Liste.
     """
     url = "https://www.tiktok.com/@" + handle
     daten = _yt_dlp_json(
         ["--flat-playlist", "--dump-single-json",
-         "--playlist-end", str(MAX_EINTRAEGE_PRO_PROFIL), url],
+         "--playlist-end", str(max_eintraege), url],
         PROFIL_TIMEOUT, fehler, "profil @" + handle)
     if daten is None:
         return []
@@ -132,12 +150,64 @@ def profil_scannen(handle, fehler):
         follower = int(follower)
 
     kandidaten = []
-    for entry in entries[:MAX_EINTRAEGE_PRO_PROFIL]:
-        kand = _roh_kandidat(entry, handle, profil_name, follower)
+    for entry in entries[:max_eintraege]:
+        kand = _roh_kandidat(entry, handle, profil_name, follower, quelle=quelle)
         if kand:
             kandidaten.append(kand)
     print("[tiktok] @%s verifiziert: %d Videos, Follower: %s"
           % (handle, len(kandidaten), follower if follower is not None else "unbekannt"))
+    return kandidaten
+
+
+def lade_discovery(fehler):
+    """scraper/discovery.json laden: [{handle, name, verifiziert, notiz}, ...]."""
+    try:
+        with open(DISCOVERY_DATEI, "r", encoding="utf-8") as f:
+            daten = json.load(f)
+    except FileNotFoundError:
+        return []
+    except (OSError, json.JSONDecodeError) as e:
+        fehler.append("tiktok discovery: discovery.json nicht lesbar (%s)" % e)
+        return []
+    if not isinstance(daten, list):
+        fehler.append("tiktok discovery: discovery.json ist keine Liste")
+        return []
+    return [d for d in daten if isinstance(d, dict) and d.get("handle")]
+
+
+def discovery_scannen(fehler, bekannte_handles=(), min_views=DISCOVERY_MIN_VIEWS):
+    """
+    (b) Kuratierte Discovery-Profile scannen: nur die neuesten
+    DISCOVERY_MAX_VIDEOS Videos, weitergereicht werden nur Kandidaten
+    mit > min_views Views. Watchlist-Handles werden ausgelassen (Dedupe).
+    Rueckgabe: Liste roher Kandidaten (quelle="discovery").
+    """
+    profile = lade_discovery(fehler)
+    if not profile:
+        return []
+    bekannte = set(h.lstrip("@").lower() for h in bekannte_handles if h)
+    kandidaten = []
+    gescannt = 0
+    for eintrag in profile:
+        handle = str(eintrag["handle"]).lstrip("@")
+        if handle.lower() in bekannte:
+            continue
+        time.sleep(SLEEP_ZWISCHEN_CALLS)
+        gescannt += 1
+        try:
+            roh = profil_scannen(handle, fehler,
+                                 max_eintraege=DISCOVERY_MAX_VIDEOS,
+                                 quelle="discovery")
+        except Exception as e:
+            fehler.append("tiktok discovery @%s: Abbruch: %s" % (handle, e))
+            continue
+        gross = [k for k in roh if (k.get("views") or 0) > min_views]
+        if roh:
+            print("[tiktok] discovery @%s: %d/%d Videos > %d Views"
+                  % (handle, len(gross), len(roh), min_views))
+        kandidaten.extend(gross)
+    print("[tiktok] Discovery: %d Profile gescannt, %d Kandidaten > %d Views"
+          % (gescannt, len(kandidaten), min_views))
     return kandidaten
 
 
@@ -197,6 +267,17 @@ def sammle(watchlist_eintraege):
             kandidaten.extend(profil_scannen(handle, fehler))
         except Exception as e:
             fehler.append("tiktok profil @%s: Abbruch: %s" % (handle, e))
+
+    # Discovery NACH der Watchlist, VOR dem Detail-Nachladen (damit grosse
+    # Discovery-Funde ebenfalls vollstaendige Captions bekommen)
+    if discovery_aktiv():
+        try:
+            kandidaten.extend(
+                discovery_scannen(fehler, bekannte_handles=[h for h, _ in handles]))
+        except Exception as e:
+            fehler.append("tiktok discovery: Abbruch: %s" % e)
+    else:
+        print("[tiktok] Discovery deaktiviert (RADAR_TIKTOK_DISCOVERY=0)")
 
     try:
         details_nachladen(kandidaten, fehler)

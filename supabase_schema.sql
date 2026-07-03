@@ -44,6 +44,32 @@ create table if not exists einstellungen (
   key text primary key,
   value jsonb
 );
+-- Genutzte Keys: 'gelernt' (Feedback-Lernen), 'watchlist' (gefolgte Personen aus dem
+-- Personen-Dashboard — Quelle der Wahrheit im Supabase-Modus, Datei ist nur Seed)
+
+create table if not exists rezepte (
+  id text primary key,
+  url text not null,
+  titel text,
+  kanal text,
+  views bigint default 0,
+  likes bigint default 0,
+  kommentare bigint default 0,
+  veroeffentlicht timestamptz,
+  thumbnail_url text,
+  dauer_s int,
+  fit_score int default 0,
+  kategorie text,
+  begruendung text,
+  zutaten_kurz jsonb default '[]'::jsonb,
+  chris_haken text,
+  score int default 0,
+  status text default 'vorschlag' check (status in ('vorschlag','gemerkt','verworfen')),
+  feedback jsonb default '[]'::jsonb,
+  gefunden_am timestamptz default now()
+);
+create index if not exists rezepte_status_score on rezepte (status, score desc);
+alter table rezepte enable row level security;
 
 -- RLS: Service-Key (Server) hat vollen Zugriff; anon bekommt nichts (App läuft serverseitig).
 alter table videos enable row level security;

@@ -33,7 +33,12 @@ logger = logging.getLogger("wolf_radar.analyse")
 # Konfiguration
 # ---------------------------------------------------------------------------
 
-GEMINI_MODELL = "gemini-2.5-flash"
+# Zwei Qualitätsstufen (User-Vorgabe: Verdict/Faktenbewertung auf hochwertigem Modell):
+# - SCHNELL: Vorfilter/Claim-Extraktion (Stufe A/B), Feedback-Notizen — hoher Durchsatz
+# - QUALITAET: Verdict (Stufe C), Skripte, Quellen-Recherche — Korrektheit vor Kosten
+GEMINI_MODELL_SCHNELL = os.environ.get("RADAR_MODELL_SCHNELL", "gemini-2.5-flash")
+GEMINI_MODELL_QUALITAET = os.environ.get("RADAR_MODELL_QUALITAET", "gemini-2.5-pro")
+GEMINI_MODELL = GEMINI_MODELL_SCHNELL  # Rückwärtskompatibilität (Default schnell)
 GEMINI_URL_VORLAGE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{modell}:generateContent"
 )
@@ -93,9 +98,10 @@ def lade_gemini_key():
 # ---------------------------------------------------------------------------
 
 def gemini_anfrage(prompt, system=None, schema=None, tools=None,
-                   temperatur=0.2, max_versuche=MAX_VERSUCHE):
+                   temperatur=0.2, max_versuche=MAX_VERSUCHE, modell=None):
     """
     Ein generateContent-Aufruf. Gibt das komplette Antwort-JSON (dict) zurück.
+    modell: expliziter Modellname; Default GEMINI_MODELL_SCHNELL.
 
     prompt      : User-Text (str)
     system      : System-Instruktion (str, optional)
@@ -106,7 +112,7 @@ def gemini_anfrage(prompt, system=None, schema=None, tools=None,
     if schema is not None and tools:
         raise ValueError("Gemini erlaubt tools (Grounding) und responseSchema nicht gleichzeitig.")
 
-    url = GEMINI_URL_VORLAGE.format(modell=GEMINI_MODELL)
+    url = GEMINI_URL_VORLAGE.format(modell=modell or GEMINI_MODELL_SCHNELL)
     koerper = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": temperatur},
@@ -183,9 +189,10 @@ def extrahiere_antwort_text(antwort):
         raise RuntimeError("Gemini-Antwort hat unerwartete Struktur: " + json.dumps(antwort)[:300])
 
 
-def gemini_json(prompt, system=None, schema=None, temperatur=0.2):
+def gemini_json(prompt, system=None, schema=None, temperatur=0.2, modell=None):
     """Bequemer Aufruf: strukturierte JSON-Antwort direkt als Python-Objekt."""
-    antwort = gemini_anfrage(prompt, system=system, schema=schema, temperatur=temperatur)
+    antwort = gemini_anfrage(prompt, system=system, schema=schema, temperatur=temperatur,
+                             modell=modell)
     text = extrahiere_antwort_text(antwort)
     try:
         return json.loads(text)
@@ -527,7 +534,8 @@ def _stufe_c(video, aussage, positions_tabelle):
         "Bewerte konservativ nach den Regeln im Systemprompt."
     )
     daten = gemini_json(prompt, system=_system_verdict(positions_tabelle),
-                        schema=_SCHEMA_VERDICT, temperatur=0.1)
+                        schema=_SCHEMA_VERDICT, temperatur=0.1,
+                        modell=GEMINI_MODELL_QUALITAET)
     # Werte härten
     daten["konfidenz"] = max(0.0, min(1.0, float(daten.get("konfidenz", 0.0))))
     daten["schadenspotential"] = int(max(1, min(5, int(daten.get("schadenspotential", 1)))))
@@ -585,12 +593,85 @@ def _tauglichkeit_score(video):
     return min(punkte, 100)
 
 
+_WISSENSBASIS_CACHE = None
+
+
+def lade_wissensbasis():
+    """Wissensbasis (aus Chris' Reaktions-Historie extrahiert) — optional, gecacht."""
+    global _WISSENSBASIS_CACHE
+    if _WISSENSBASIS_CACHE is None:
+        pfad = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wissen", "wissensbasis.json")
+        try:
+            with open(pfad, encoding="utf-8") as f:
+                _WISSENSBASIS_CACHE = json.load(f)
+            logger.info("Wissensbasis geladen: %d Personen, %d Interessen-Themen.",
+                        len(_WISSENSBASIS_CACHE.get("personen", [])),
+                        len(_WISSENSBASIS_CACHE.get("interessen_profil", {})))
+        except (OSError, ValueError):
+            _WISSENSBASIS_CACHE = {}
+    return _WISSENSBASIS_CACHE
+
+
+# Mythen-Katalog-Slugs -> Interessen-Profil-Slugs der Wissensbasis (Reaktions-Historie).
+# Nicht gemappte Slugs bleiben neutral (Faktor 1.0).
+_INTERESSEN_ALIAS = {
+    "protein_allgemein": "protein",
+    "protein_niere": "protein",
+    "clean_eating_chemie": "verarbeitete_lebensmittel",
+    "light_produkte": "verarbeitete_lebensmittel",
+    "detox_kuren": "heilsversprechen_angstmache",
+    "fasten_magie": "heilsversprechen_angstmache",
+    "crash_diaeten": "heilsversprechen_angstmache",
+    "stoffwechsel_mythen": "ernaehrungs_mythen",
+    "fruehstuecksmythos": "ernaehrungs_mythen",
+    "kohlenhydrate_abends": "ernaehrungs_mythen",
+    "mahlzeiten_regeln": "ernaehrungs_mythen",
+    "kaloriendefizit": "ernaehrungs_mythen",
+    "vollkorn_dogma": "ernaehrungs_mythen",
+    "honig_datteln_zucker": "zucker",
+    "saefte_fluessige_kalorien": "zucker",
+    "training_fettabbau_mythen": "training_mythen",
+    "uebergewicht_disziplin": "body_positivity",
+}
+
+
+def _wissensbasis_boni(video, thema_slug):
+    """(interessen_faktor, personen_bonus): Passt das Video zu Chris' Reaktions-Historie?
+    - interessen_faktor 0.9-1.25: Thema, auf das Chris nachweislich oft reagiert, rankt hoeher
+    - personen_bonus 0-30: Absender ist eine Person, auf die Chris schon reagiert hat"""
+    wb = lade_wissensbasis()
+    profil = wb.get("interessen_profil") or {}
+    interesse = profil.get(thema_slug)
+    if interesse is None:
+        interesse = profil.get(_INTERESSEN_ALIAS.get(thema_slug, ""))
+    interessen_faktor = 1.0 if interesse is None else 0.9 + 0.35 * float(interesse)
+
+    personen_bonus = 0
+    kanal = ((video.get("kanal") or "") + " " + (video.get("kanal_id") or "")).lower()
+    if kanal.strip():
+        for person in wb.get("personen", []):
+            # Namens-Kern ohne Klammer-Zusatz ("Coach Aaron (Rohgang)" -> "coach aaron")
+            kandidaten_namen = []
+            name_kern = (person.get("name") or "").split("(")[0].strip().lower()
+            if name_kern:
+                kandidaten_namen.append(name_kern)
+            kandidaten_namen += [h.lower() for h in (person.get("handles") or {}).values() if h]
+            if any(n and n in kanal for n in kandidaten_namen):
+                personen_bonus = min(30, 6 * int(person.get("prioritaet", 1)))
+                break
+    return interessen_faktor, personen_bonus
+
+
 def berechne_scores(video, verdict_daten, thema_slug, gelernt, themen):
-    """Stufe D komplett: Teil-Scores + Gesamt-Score nach Kontrakt (0.4/0.4/0.2)."""
+    """Stufe D komplett: Teil-Scores + Gesamt-Score nach Kontrakt (0.4/0.4/0.2).
+    Wissensbasis-Einfluss: Interessen-Profil skaliert die Relevanz, Reaktions-Historie
+    des Absenders erhoeht die Tauglichkeit (wie ein Watchlist-Treffer)."""
+    interessen_faktor, personen_bonus = _wissensbasis_boni(video, thema_slug)
     reichweite = _reichweite_score(video)
     relevanz = _relevanz_score(thema_slug, verdict_daten["konfidenz"],
                                verdict_daten["schadenspotential"], gelernt, themen)
-    tauglichkeit = _tauglichkeit_score(video)
+    relevanz = int(max(0, min(100, round(relevanz * interessen_faktor))))
+    tauglichkeit = int(max(0, min(100, _tauglichkeit_score(video) + personen_bonus)))
     gesamt = int(round(0.4 * reichweite + 0.4 * relevanz + 0.2 * tauglichkeit))
     return gesamt, {"reichweite": reichweite, "relevanz": relevanz, "tauglichkeit": tauglichkeit}
 

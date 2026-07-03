@@ -62,12 +62,26 @@ def ist_deutsch(text):
 
 
 def lade_watchlist():
+    """Watchlist laden. Im Supabase-Modus ist die DB die Quelle der Wahrheit
+    (das Personen-Dashboard schreibt 'Folgen' dorthin); die Datei ist der Seed."""
+    datei_eintraege = []
     try:
         with open(WATCHLIST_DATEI, "r", encoding="utf-8") as f:
-            return json.load(f).get("eintraege", [])
+            datei_eintraege = json.load(f).get("eintraege", [])
     except (OSError, json.JSONDecodeError) as e:
         print("[lauf] WARNUNG: watchlist.json nicht lesbar: %s" % e)
-        return []
+
+    if speicher.daten_modus() == "supabase":
+        try:
+            zeilen = speicher._supabase_get("einstellungen", {"select": "value", "key": "eq.watchlist"})
+            if zeilen and zeilen[0].get("value", {}).get("eintraege"):
+                db_eintraege = zeilen[0]["value"]["eintraege"]
+                print("[lauf] Watchlist aus Supabase: %d Eintraege (Datei-Seed: %d)"
+                      % (len(db_eintraege), len(datei_eintraege)))
+                return db_eintraege
+        except Exception as e:
+            print("[lauf] WARNUNG: Watchlist aus Supabase nicht ladbar (%s) — nutze Datei." % e)
+    return datei_eintraege
 
 
 def vorfilter(kandidaten, bestand_ids, limit=None):
@@ -225,10 +239,22 @@ def main():
         if analysiere_batch is None:
             print("[lauf] analyse.py noch nicht vorhanden — laufe ohne Analyse weiter (Rohkandidaten)")
 
+    # Instagram: mit APIFY_TOKEN läuft der zuverlässige Apify-Scraper,
+    # ohne Token der gallery-dl-Best-Effort (rate-limit-anfällig).
+    def instagram_sammeln():
+        try:
+            import apify_agent
+            if apify_agent.verfuegbar():
+                print("[lauf] instagram: Apify-Modus (APIFY_TOKEN gesetzt)")
+                return apify_agent.sammle_instagram(watchlist)
+        except ImportError:
+            pass
+        return instagram_agent.sammle(watchlist)
+
     agenten = {
         "youtube": lambda: youtube_agent.sammle(watchlist),
         "tiktok": lambda: tiktok_agent.sammle(watchlist),
-        "instagram": lambda: instagram_agent.sammle(watchlist),
+        "instagram": instagram_sammeln,
     }
 
     gesamt_neu, gesamt_aktualisiert = 0, 0

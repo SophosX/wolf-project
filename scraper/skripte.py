@@ -164,7 +164,8 @@ def _suche_quellen(claim_aussage, thema):
         "Bevorzuge Metaanalysen, Behörden und Fachgesellschaften als Quellen. Antworte auf Deutsch."
     )
     try:
-        antwort = analyse.gemini_anfrage(prompt, tools=[{"google_search": {}}], temperatur=0.2)
+        antwort = analyse.gemini_anfrage(prompt, tools=[{"google_search": {}}], temperatur=0.2,
+                                         modell=analyse.GEMINI_MODELL_QUALITAET)
     except Exception as fehler:
         logger.error("Quellen-Grounding fehlgeschlagen: %s — Quellen bleiben leer.", fehler)
         return "", []
@@ -344,7 +345,8 @@ def generiere_skripte(video, gelernt):
                       str(MIN_WOERTER) + "-" + str(MAX_WOERTER) + " Wörter.")
         try:
             letzte_daten = analyse.gemini_json(prompt + zusatz, system=system,
-                                               schema=_SCHEMA_SKRIPTE, temperatur=0.7)
+                                               schema=_SCHEMA_SKRIPTE, temperatur=0.7,
+                                               modell=analyse.GEMINI_MODELL_QUALITAET)
         except Exception as fehler_aufruf:
             logger.error("Skript-Generierung Versuch %d fehlgeschlagen: %s", versuch, fehler_aufruf)
             fehler = [str(fehler_aufruf)]

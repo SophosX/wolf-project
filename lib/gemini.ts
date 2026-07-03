@@ -6,7 +6,11 @@
 import { ladeWissen } from "./wissen";
 import type { Quelle, Skript, Video } from "./typen";
 
-const MODELL = "gemini-2.5-flash";
+// Zwei Qualitätsstufen (User-Vorgabe: Faktencheck & Skripte auf hochwertigem Modell):
+// - QUALITAET für Faktencheck + Skript-Generierung (Standard: gemini-2.5-pro)
+// - SCHNELL als Fallback, wenn das Pro-Modell überlastet ist (503/429)
+const MODELL_QUALITAET = process.env.RADAR_MODELL_QUALITAET || "gemini-2.5-pro";
+const MODELL_SCHNELL = process.env.RADAR_MODELL_SCHNELL || "gemini-2.5-flash";
 const API_BASIS = "https://generativelanguage.googleapis.com/v1beta/models";
 
 interface GeminiAntwort {
@@ -24,32 +28,37 @@ function apiKey(): string {
 async function rufeGemini(
   prompt: string,
   mitSuche: boolean,
-  temperatur = 0.8
+  temperatur = 0.8,
+  modell: string = MODELL_QUALITAET
 ): Promise<GeminiAntwort> {
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: temperatur,
       maxOutputTokens: 16384,
-      // gemini-2.5-flash denkt sonst das ganze Token-Budget weg (MAX_TOKENS ohne Text)
-      thinkingConfig: { thinkingBudget: 2048 },
+      // Gemini 2.5 denkt sonst das ganze Token-Budget weg (MAX_TOKENS ohne Text)
+      thinkingConfig: { thinkingBudget: 4096 },
     },
   };
   if (mitSuche) body.tools = [{ google_search: {} }];
 
-  const res = await fetch(API_BASIS + "/" + MODELL + ":generateContent", {
+  const res = await fetch(API_BASIS + "/" + modell + ":generateContent", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-goog-api-key": apiKey(),
     },
     body: JSON.stringify(body),
-    // Skripte können dauern
-    signal: AbortSignal.timeout(120_000),
+    // Pro-Modell + Grounding kann dauern
+    signal: AbortSignal.timeout(180_000),
   });
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
+    // Pro-Modell überlastet/gedrosselt → einmalig aufs schnelle Modell ausweichen
+    if ((res.status === 429 || res.status === 503) && modell !== MODELL_SCHNELL) {
+      return rufeGemini(prompt, mitSuche, temperatur, MODELL_SCHNELL);
+    }
     throw new Error(
       "Gemini-API-Fehler (" + res.status + "): " + detail.slice(0, 400)
     );

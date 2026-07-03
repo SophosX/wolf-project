@@ -1,6 +1,6 @@
 // Kopfleiste (Server-Komponente): Logo + Tabs mit Live-Zählern
 
-import { zaehleStatus } from "@/lib/daten";
+import { zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
 import NavTabs from "./NavTabs";
 
 export default async function Kopfleiste() {
@@ -12,10 +12,16 @@ export default async function Kopfleiste() {
     abgelehnt: 0,
     archiv: 0,
   };
+  let rezepte = 0;
   try {
     zaehler = await zaehleStatus();
   } catch (e) {
     console.error("[Kopfleiste] Zähler konnten nicht geladen werden:", e);
+  }
+  try {
+    rezepte = await zaehleRezeptVorschlaege();
+  } catch (e) {
+    console.error("[Kopfleiste] Rezept-Zähler konnte nicht geladen werden:", e);
   }
 
   const tabs = [
@@ -23,6 +29,8 @@ export default async function Kopfleiste() {
     { pfad: "/angenommen", label: "Angenommen", zahl: zaehler.angenommen },
     { pfad: "/gespeichert", label: "Gespeichert", zahl: zaehler.gespeichert },
     { pfad: "/strittig", label: "Strittig", zahl: zaehler.strittig },
+    { pfad: "/rezepte", label: "Rezepte", zahl: rezepte },
+    { pfad: "/personen", label: "Personen", zahl: null },
     { pfad: "/archiv", label: "Archiv", zahl: zaehler.abgelehnt + zaehler.archiv },
     { pfad: "/agenten", label: "Agenten", zahl: null },
   ];

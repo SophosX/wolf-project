@@ -9,6 +9,8 @@ import path from "path";
 import type {
   AgentRun,
   Einstellungen,
+  Rezept,
+  RezeptFilter,
   Status,
   Video,
   VideoFilter,
@@ -232,9 +234,35 @@ export async function holeEinstellungen(): Promise<Einstellungen> {
     gelernt: {
       themen_boost: e.gelernt?.themen_boost || {},
       notizen: e.gelernt?.notizen || [],
+      rezept_notizen: e.gelernt?.rezept_notizen || [],
     },
     zuletzt_gelernt: e.zuletzt_gelernt || null,
   };
+}
+
+/** Generischer Einstellungs-Wert (z.B. key "watchlist") — Supabase: einstellungen-Tabelle. */
+export async function holeEinstellungsWert<T>(key: string, fallback: T): Promise<T | null> {
+  if (datenModus() === "supabase") {
+    const sb = await supabase();
+    const { data, error } = await sb
+      .from("einstellungen")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle();
+    if (error) throw new Error("Supabase-Fehler (" + key + "): " + error.message);
+    return (data?.value as T) ?? fallback;
+  }
+  return fallback; // Lokal-Modus: Aufrufer nutzt seine Datei-Quelle
+}
+
+export async function speichereEinstellungsWert(key: string, value: unknown): Promise<void> {
+  if (datenModus() === "supabase") {
+    const sb = await supabase();
+    const { error } = await sb.from("einstellungen").upsert({ key, value });
+    if (error) throw new Error("Supabase-Fehler (" + key + " upsert): " + error.message);
+    return;
+  }
+  throw new Error("speichereEinstellungsWert ist nur im Supabase-Modus verfügbar");
 }
 
 export async function speichereEinstellungen(e: Einstellungen): Promise<void> {
@@ -247,6 +275,72 @@ export async function speichereEinstellungen(e: Einstellungen): Promise<void> {
     return;
   }
   await mitLock(() => schreibeJson("einstellungen.json", e));
+}
+
+// ---------------------------------------------------------------------------
+// Rezepte-Radar (daten/rezepte.json — geschrieben vom scraper/rezepte_agent.py)
+// ---------------------------------------------------------------------------
+
+function rezeptFilterAnwenden(rezepte: Rezept[], filter?: RezeptFilter): Rezept[] {
+  let liste = rezepte;
+  if (filter?.status) {
+    const stati = Array.isArray(filter.status) ? filter.status : [filter.status];
+    liste = liste.filter((r) => stati.includes(r.status));
+  }
+  if (filter?.kategorie) liste = liste.filter((r) => r.kategorie === filter.kategorie);
+  return [...liste].sort((a, b) => (b.score || 0) - (a.score || 0));
+}
+
+export async function holeRezepte(filter?: RezeptFilter): Promise<Rezept[]> {
+  if (datenModus() === "supabase") {
+    const sb = await supabase();
+    let q = sb.from("rezepte").select("*").order("score", { ascending: false });
+    if (filter?.status) {
+      const stati = Array.isArray(filter.status) ? filter.status : [filter.status];
+      q = q.in("status", stati);
+    }
+    if (filter?.kategorie) q = q.eq("kategorie", filter.kategorie);
+    const { data, error } = await q;
+    if (error) throw new Error("Supabase-Fehler (rezepte): " + error.message);
+    return (data || []) as Rezept[];
+  }
+  return rezeptFilterAnwenden(liesJson<Rezept[]>("rezepte.json", []), filter);
+}
+
+export async function holeRezept(id: string): Promise<Rezept | null> {
+  const rezepte = await holeRezepte();
+  return rezepte.find((r) => r.id === id) || null;
+}
+
+export async function aktualisiereRezept(
+  id: string,
+  patch: Partial<Rezept>
+): Promise<Rezept> {
+  if (datenModus() === "supabase") {
+    const sb = await supabase();
+    const { data, error } = await sb
+      .from("rezepte")
+      .update(patch)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw new Error("Supabase-Fehler (rezept update): " + error.message);
+    return data as Rezept;
+  }
+  return mitLock(async () => {
+    const rezepte = liesJson<Rezept[]>("rezepte.json", []);
+    const idx = rezepte.findIndex((r) => r.id === id);
+    if (idx < 0) throw new Error("Rezept nicht gefunden: " + id);
+    rezepte[idx] = { ...rezepte[idx], ...patch };
+    await schreibeJson("rezepte.json", rezepte);
+    return rezepte[idx];
+  });
+}
+
+/** Anzahl offener Rezept-Vorschläge (für den Kopfleisten-Tab). */
+export async function zaehleRezeptVorschlaege(): Promise<number> {
+  const rezepte = await holeRezepte({ status: "vorschlag" });
+  return rezepte.length;
 }
 
 /** Zähler je Status für die Kopfleisten-Tabs. */

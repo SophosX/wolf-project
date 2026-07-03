@@ -1,11 +1,41 @@
 {
   "beschreibung": "Beobachtungsliste — Personen, die laut Chris/User wiederholt Falschinfos verbreiten. In der App erweiterbar.",
   "eintraege": [
-    { "name": "Fabian Kowallik", "youtube": "UCQlvHgLN06bF7YpvAgqg91Q", "tiktok": null, "instagram": "fabiankowallik", "notiz": "443k YouTube (Hauptplattform); Training/Ernährungs-Mythen. TikTok-Handle nicht auffindbar (nur Discover-Clips über ihn) — 2026-07-03 verifiziert" },
-    { "name": "Coach Aaron (NNG)", "youtube": "UCj-MSsZFmxdlbYyP9kCj-QQ", "tiktok": "nngworld", "instagram": "coach_aaron_nng", "notiz": "107k YouTube; Zuckerriegel/Doppelmoral-Reaktion" },
-    { "name": "Pamela Reif", "youtube": "UChVRfsT_ASBZk10o0An7Ucg", "tiktok": "pamela_rf", "instagram": "pamela_rf", "notiz": "10,7M YouTube; große Reichweite, Ernährungs-Claims" },
-    { "name": "Doktor Weigl", "youtube": "UC-Ivlaz1y9TToFnpzmA7adw", "tiktok": "doktorweigl", "instagram": "doktorweigl", "notiz": "1,3M YouTube; Protein/Nieren-Claims (Reaktion belegt)" },
-    { "name": "Sanaz Saleh-Ebrahimi", "youtube": null, "tiktok": "sanaz.cooks", "instagram": "sanaz.cooks", "notiz": "Handle @sanaz.cooks (TikTok 2026-07-03 via yt-dlp verifiziert, ~275k Follower). Achtung: Wissenschaftsjournalistin (ZDF/ARD) — öffentliche Kontroverse mit Chris hat zwei Seiten. Das konservative Verdict schützt: korrekte Aussagen werden NICHT geflaggt." }
+    {
+      "name": "Fabian Kowallik",
+      "youtube": "UCQlvHgLN06bF7YpvAgqg91Q",
+      "tiktok": null,
+      "instagram": "fabiankowallik",
+      "notiz": "443k YouTube (Hauptplattform); Training/Ernährungs-Mythen. TikTok-Handle nicht auffindbar (nur Discover-Clips über ihn) — 2026-07-03 verifiziert"
+    },
+    {
+      "name": "Coach Aaron (NNG)",
+      "youtube": "UCj-MSsZFmxdlbYyP9kCj-QQ",
+      "tiktok": "nngworld",
+      "instagram": "coach_aaron_official",
+      "notiz": "107k YouTube, 274k IG (@coach_aaron_official, 2026-07-03 verifiziert via Websuche); Zuckerriegel/Doppelmoral-Reaktion"
+    },
+    {
+      "name": "Pamela Reif",
+      "youtube": "UChVRfsT_ASBZk10o0An7Ucg",
+      "tiktok": "pamela_rf",
+      "instagram": "pamela_rf",
+      "notiz": "10,7M YouTube; große Reichweite, Ernährungs-Claims"
+    },
+    {
+      "name": "Doktor Weigl",
+      "youtube": "UC-Ivlaz1y9TToFnpzmA7adw",
+      "tiktok": "doktorweigl",
+      "instagram": "doktorweigl",
+      "notiz": "1,3M YouTube; Protein/Nieren-Claims (Reaktion belegt)"
+    },
+    {
+      "name": "Sanaz Saleh-Ebrahimi",
+      "youtube": null,
+      "tiktok": "sanaz.cooks",
+      "instagram": "sanaz.cooks",
+      "notiz": "Handle @sanaz.cooks (TikTok 2026-07-03 via yt-dlp verifiziert, ~275k Follower). Achtung: Wissenschaftsjournalistin (ZDF/ARD) — öffentliche Kontroverse mit Chris hat zwei Seiten. Das konservative Verdict schützt: korrekte Aussagen werden NICHT geflaggt."
+    }
   ],
   "hinweis_handles": "TikTok/Instagram-Handles sind Best-Guess-Seeds — Agenten müssen sie beim ersten Lauf verifizieren (Profil existiert + Name passt) und Fehlschläge in agent_runs.fehler loggen statt still zu scheitern.",
   "prinzip": "Die Watchlist priorisiert Quellen, sie verurteilt niemanden: Der Radar flaggt AUSSAGEN (nur wissenschaftlich klar Widerlegbares), nie Personen. Korrekte/strittige Inhalte von Watchlist-Profilen landen nicht in der Inbox."

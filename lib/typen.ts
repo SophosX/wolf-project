@@ -81,6 +81,7 @@ export interface Einstellungen {
   gelernt: {
     themen_boost: Record<string, number>; // slug → -1..1
     notizen: string[];
+    rezept_notizen?: string[]; // Kommentare aus dem Rezepte-Radar
   };
   zuletzt_gelernt: string | null;
 }
@@ -90,6 +91,58 @@ export interface VideoFilter {
   plattform?: Plattform;
   thema?: string;
   zeitraumTage?: number; // veroeffentlicht innerhalb der letzten N Tage
+}
+
+// ---------------------------------------------------------------------------
+// Rezepte-Radar (daten/rezepte.json — Datenmodell aus scraper/rezepte_agent.py)
+// ---------------------------------------------------------------------------
+
+export type RezeptStatus = "vorschlag" | "gemerkt" | "verworfen";
+
+export type RezeptKategorie =
+  | "sattmacher"
+  | "suesshunger"
+  | "snack"
+  | "meal_prep"
+  | "sonstiges";
+
+export interface Rezept {
+  id: string; // "youtube:abc123"
+  url: string;
+  titel: string;
+  kanal: string;
+  views: number;
+  likes: number | null;
+  kommentare: number | null;
+  veroeffentlicht: string; // ISO
+  thumbnail_url: string | null;
+  dauer_s: number | null;
+  fit_score: number; // 0-100 (Gemini: passt zu Chris?)
+  kategorie: RezeptKategorie;
+  begruendung: string; // 1 Satz, warum das Rezept (nicht) passt
+  zutaten_kurz: string[]; // max 6 Hauptzutaten aus Titel/Beschreibung
+  chris_haken: string; // was Chris kritisieren würde ("" wenn nichts)
+  score: number; // 0-100 = 0.5*Community-Resonanz + 0.5*fit_score
+  status: RezeptStatus;
+  feedback: FeedbackEintrag[];
+  gefunden_am: string; // ISO
+}
+
+export interface RezeptFilter {
+  status?: RezeptStatus | RezeptStatus[];
+  kategorie?: RezeptKategorie | string;
+}
+
+export const REZEPT_KATEGORIE_LABELS: Record<string, string> = {
+  sattmacher: "Sattmacher",
+  suesshunger: "Süßhunger",
+  snack: "Snack",
+  meal_prep: "Meal Prep",
+  sonstiges: "Sonstiges",
+};
+
+export function rezeptKategorieLabel(slug: string): string {
+  return REZEPT_KATEGORIE_LABELS[slug] || slug.replace(/_/g, " ");
 }
 
 export interface WatchlistEintrag {

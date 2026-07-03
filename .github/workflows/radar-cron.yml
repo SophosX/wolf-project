@@ -1,6 +1,8 @@
 # Wolf Radar — Scraper-Cron
-# Laeuft alle 4 Stunden (+ manuell via workflow_dispatch) und schreibt
-# Kandidaten + agent_run-Protokolle nach Supabase (DATEN_MODUS=supabase).
+# YouTube + TikTok laufen alle 4 Stunden; Instagram nur 1x taeglich
+# (eigener Schedule-Eintrag 05:30 UTC — IG rate-limitet aggressiv).
+# Manuell via workflow_dispatch laufen alle drei Quellen.
+# Kandidaten + agent_run-Protokolle gehen nach Supabase (DATEN_MODUS=supabase).
 # Auch bei Agenten-Fehlern schreibt lauf.py sein Protokoll — die App zeigt
 # Ausfaelle im Agenten-Status-Panel statt still zu scheitern.
 
@@ -8,8 +10,9 @@ name: radar-cron
 
 on:
   schedule:
-    - cron: "0 */4 * * *"   # alle 4 Stunden (UTC)
-  workflow_dispatch: {}      # manueller Start im GitHub-UI
+    - cron: "0 */4 * * *"   # alle 4 Stunden (UTC): YouTube + TikTok
+    - cron: "30 5 * * *"    # 1x taeglich (UTC): nur Instagram
+  workflow_dispatch: {}      # manueller Start im GitHub-UI: alle Quellen
 
 # Nie zwei Laeufe parallel (Merge-Semantik schuetzt zwar, aber unnoetig)
 concurrency:
@@ -25,6 +28,9 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      # Optional: Instagram-Session-Cookie (siehe README). Fehlt das Secret,
+      # laeuft der IG-Agent wie bisher ohne Login (Best effort).
+      IG_SESSIONID: ${{ secrets.IG_SESSIONID }}
       DATEN_MODUS: supabase
     steps:
       - name: Repo auschecken
@@ -41,11 +47,24 @@ jobs:
       - name: ffmpeg bereitstellen (fuer yt-dlp-Untertitel)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
 
-      - name: Radar-Lauf
+      - name: Quellen bestimmen
+        id: quellen
+        # 4h-Takt: YouTube+TikTok | Taeglicher 05:30-Lauf: nur Instagram
+        # (schont IG-Rate-Limits) | Manueller Start: alles.
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "nur=youtube,tiktok,instagram" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "30 5 * * *" ]; then
+            echo "nur=instagram" >> "$GITHUB_OUTPUT"
+          else
+            echo "nur=youtube,tiktok" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Radar-Lauf (${{ steps.quellen.outputs.nur }})
         id: lauf
         # lauf.py schreibt agent_runs selbst (auch bei Teilfehlern) und
         # beendet nur mit Exit 1, wenn ueberhaupt nichts gefunden wurde.
-        run: python scraper/lauf.py
+        run: python scraper/lauf.py --nur "${{ steps.quellen.outputs.nur }}"
 
       - name: Notfall-Protokoll bei hartem Absturz
         # Greift nur, wenn lauf.py selbst gecrasht ist (z.B. SyntaxError,

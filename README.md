@@ -24,6 +24,33 @@ oder eine beliebige URL mit `?code=radar` öffnen.
 | `DATEN_MODUS` | `lokal` (Default) oder `supabase` |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | nur im Supabase-Modus (Server-only!) |
 
+## Scraper-Haertung: Instagram-Session-Cookie (optional) & TikTok-Discovery
+
+**Instagram** blockt anonyme Zugriffe oft (Login-Wall, 401). Der IG-Agent läuft
+ohne Login weiter (Best effort), aber mit einem Session-Cookie deutlich zuverlässiger:
+
+1. Im Browser (am besten ein **Zweit-/Wegwerf-Account**, nicht Chris' Hauptaccount!)
+   bei instagram.com einloggen.
+2. DevTools öffnen (`F12` bzw. `Cmd+Alt+I`) → Tab **Application** (Chrome) /
+   **Storage** (Firefox) → **Cookies** → `https://www.instagram.com`.
+3. Den **Wert** des Cookies `sessionid` kopieren (lange Zeichenkette mit `%3A` darin).
+4. Lokal in `.env` eintragen: `IG_SESSIONID=<wert>` — für GitHub Actions als
+   Repo-Secret `IG_SESSIONID` anlegen (Settings → Secrets → Actions).
+
+Hinweise: Der Cookie ist ein **Voll-Zugang zum Account** — nie committen, nie teilen.
+Er wird ungültig, sobald man sich im Browser ausloggt (deshalb Browser-Tab einfach
+schließen statt Logout). Der Agent schreibt ihn nur in eine temporäre Cookie-Datei,
+die nach dem Lauf gelöscht wird. Weitere IG-Schutzmechanismen: exponentielles Backoff
+zwischen Profilen, Abbruch des restlichen IG-Laufs beim ersten 401 („IG rate-limited"),
+Handle-Cache `daten/ig_handle_status.json` (fehlgeschlagene Handles nur 1×/Woche erneut).
+Im Cron läuft Instagram nur **1× täglich** (05:30 UTC), YouTube+TikTok alle 4 h.
+
+**TikTok-Discovery:** Zusätzlich zur Watchlist scannt der TikTok-Agent die kuratierte
+Liste `scraper/discovery.json` (~12 große deutsche Ernährungs-/Fitness-Profile,
+Handles per yt-dlp verifiziert) — je Profil nur die neuesten 15 Videos, weitergereicht
+werden nur Kandidaten mit > 20 000 Views (`quelle: "discovery"`).
+Abschalten: `RADAR_TIKTOK_DISCOVERY=0`.
+
 ## Datenfluss
 
 - **Lokal-Modus:** `lib/daten.ts` liest/schreibt `daten/*.json` (Write-Lock, atomare Writes).
