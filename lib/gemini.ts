@@ -477,13 +477,15 @@ export function baueFaktencheckBericht(checks: BehauptungsCheck[]): {
   const falsch = zaehle("klar_falsch");
   const irref = zaehle("stark_irrefuehrend");
 
+  const vonAllen = (n: number) =>
+    n + " von " + checks.length + " geprüften Behauptungen " + (n === 1 ? "ist" : "sind");
   let gesamt: string;
   if (falsch > 0) {
-    gesamt = falsch + " von " + checks.length + " geprüften Behauptungen ist/sind **klar falsch**" +
+    gesamt = vonAllen(falsch) + " **klar falsch**" +
       (irref ? ", " + irref + " weitere stark irreführend" : "") + " — Reaktion lohnt sich.";
   } else if (irref > 0) {
-    gesamt = "Keine Behauptung ist klar falsch, aber " + irref + " von " + checks.length +
-      " ist/sind **stark irreführend** — Reaktion möglich, Framing beachten.";
+    gesamt = "Keine Behauptung ist klar falsch, aber " + vonAllen(irref) +
+      " **stark irreführend** — Reaktion möglich, Framing beachten.";
   } else if (zaehle("nuanciert") > 0) {
     gesamt = "Die Evidenz ist hier **gemischt/nuanciert** — keine klare Falschaussage. " +
       "Vorsicht mit einer harten Richtigstellung.";
