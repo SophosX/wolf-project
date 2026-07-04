@@ -37,6 +37,9 @@ services:
       context: .
       dockerfile: deploy/scraper.Dockerfile
     restart: unless-stopped
+    # tini als PID 1: supercronic crasht als PID 1 beim Job-Fork
+    # ("Failed to fork exec"), als Kindprozess läuft es sauber
+    init: true
     env_file: .env.server
     volumes:
       - daten:/app/daten

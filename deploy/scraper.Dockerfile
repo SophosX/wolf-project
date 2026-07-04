@@ -14,12 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # beim monatlichen `docker compose build --no-cache scraper` kommen sie frisch.
 RUN pip install --no-cache-dir requests yt-dlp gallery-dl
 
-# supercronic: Container-Cron, reicht ENV an Jobs durch, loggt nach stdout
+# supercronic: Container-Cron, reicht ENV an Jobs durch, loggt nach stdout.
+# Architektur zur Bauzeit ermitteln (amd64 auf dem VPS, arm64 auf Apple Silicon)
 ARG SUPERCRONIC_VERSION=v0.2.34
-ARG TARGETARCH=amd64
-RUN curl -fsSL -o /usr/local/bin/supercronic \
-      "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH}" \
-    && chmod +x /usr/local/bin/supercronic
+RUN arch="$(dpkg --print-architecture)" \
+    && curl -fsSL -o /usr/local/bin/supercronic \
+      "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${arch}" \
+    && chmod +x /usr/local/bin/supercronic \
+    && /usr/local/bin/supercronic -version
 
 WORKDIR /app
 COPY scraper /app/scraper
