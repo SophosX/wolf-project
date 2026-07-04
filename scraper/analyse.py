@@ -640,7 +640,14 @@ BEGRUENDUNG: <genau ein Satz mit dem entscheidenden Fakt (Zahl/Quelle), der das 
 EVIDENZ: <2-4 Sätze: was deine Suche konkret ergab — Studien/Behörden mit Kernergebnis>"""
 
 _WEBCHECK_URTEILE = ("bestaetigt_falsch", "stark_irrefuehrend", "nuanciert", "korrekt", "unklar")
-_WEBCHECK_URTEIL_RE = re.compile(r"URTEIL\s*:\s*\**\s*([a-z_]+)", re.IGNORECASE)
+_WEBCHECK_URTEIL_RE = re.compile(r"URTEIL\s*:\s*\**\s*([a-zäöüß_]+)", re.IGNORECASE)
+
+
+def _normalisiere_urteil(roh):
+    """Modelle schreiben Urteile gern in deutscher Schreibweise ('stark_irreführend')."""
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        roh = roh.replace(a, b)
+    return roh
 _WEBCHECK_GRUND_RE = re.compile(r"BEGRUENDUNG\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
 
@@ -680,7 +687,7 @@ def _stufe_c_websuche_einmal(video, aussage):
                        video.get("id"), fehler)
         return None
     urteil_treffer = _WEBCHECK_URTEIL_RE.search(text)
-    urteil = (urteil_treffer.group(1).lower() if urteil_treffer else "")
+    urteil = _normalisiere_urteil(urteil_treffer.group(1).lower()) if urteil_treffer else ""
     if urteil not in _WEBCHECK_URTEILE:
         logger.warning("Stufe C+ unparsebar für %s (%r) — Stufe-C-Urteil bleibt.",
                        video.get("id"), text[:120])
