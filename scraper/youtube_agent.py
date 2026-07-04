@@ -343,6 +343,9 @@ def watchlist_uploads(watchlist_eintraege, fehler):
 _VTT_TAG = re.compile(r"<[^>]+>")
 _VTT_ZEIT = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s+-->")
 
+# Sentinel: Untertitel-Abruf scheiterte am IP-Rate-Limit (kein inhaltlicher Fehler)
+_RATE_LIMIT = "__RATE_LIMIT_429__"
+
 
 def _vtt_zu_text(vtt_inhalt, max_zeichen=TRANSKRIPT_MAX_ZEICHEN):
     """
@@ -393,7 +396,13 @@ def _transkript_fuer_video(video_id, fehler):
         ergebnis = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
         if ergebnis.returncode != 0:
             meldung = (ergebnis.stderr or "").strip().splitlines()
-            fehler.append("youtube transkript %s: %s" % (video_id, meldung[-1] if meldung else "yt-dlp Fehler"))
+            letzte = meldung[-1] if meldung else "yt-dlp Fehler"
+            if "429" in letzte:
+                # Erwartetes IP-Rate-Limit: KEIN Panel-Fehler — der Aufrufer erkennt
+                # es am Marker, setzt den Cooldown und der Audio-Fallback uebernimmt.
+                print("[youtube] Untertitel %s: HTTP 429 (Rate-Limit)" % video_id)
+                return _RATE_LIMIT
+            fehler.append("youtube transkript %s: %s" % (video_id, letzte))
             return None
         vtts = glob.glob(os.path.join(tmp, "*.vtt"))
         if not vtts:
@@ -458,23 +467,23 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
 
     erfolgreich = 0
     for kand in ziel:
-        vorher = len(fehler)
         text = _transkript_fuer_video(kand["video_id"], fehler)
-        if text:
-            kand["transkript"] = text
-            erfolgreich += 1
-        # YouTube drosselt den Untertitel-Endpunkt IP-basiert (HTTP 429):
-        # dann sofort aufhoeren statt weiterzuhaemmern. Betroffene Kandidaten
-        # werden markiert: endet ihre Analyse mangels Material als "aussortiert",
-        # verwirft lauf.py das Urteil und der naechste Lauf versucht es mit Transkript.
-        neue_fehler = fehler[vorher:]
-        if any("429" in f for f in neue_fehler):
+        if text == _RATE_LIMIT:
+            # YouTube drosselt den Untertitel-Endpunkt IP-basiert (HTTP 429):
+            # sofort aufhoeren + Cooldown setzen statt weiterzuhaemmern. KEIN
+            # Panel-Fehler — der Audio-Fallback der Transkription uebernimmt,
+            # und 'aussortiert' ohne Material wird ohnehin vertagt (lauf.py).
             for offen in ziel[ziel.index(kand):]:
                 if not offen.get("transkript"):
                     offen["transkript_429"] = True
-            fehler.append("youtube transkripte: HTTP 429 (Rate-Limit) — restliche %d Transkripte uebersprungen"
-                          % (len(ziel) - ziel.index(kand) - 1))
+            _subs_cooldown_setzen()
+            print("[youtube] Transkripte: 429 — restliche %d gehen in den Audio-Fallback, "
+                  "Untertitel pausieren %d min"
+                  % (len(ziel) - ziel.index(kand), SUBS_COOLDOWN_S // 60))
             break
+        if text:
+            kand["transkript"] = text
+            erfolgreich += 1
         time.sleep(2)  # rate-schonend
     print("[youtube] Transkripte: %d/%d erfolgreich (views > %d)"
           % (erfolgreich, len(ziel), min_views))
