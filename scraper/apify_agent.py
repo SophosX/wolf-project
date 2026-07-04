@@ -10,11 +10,16 @@ grob 5-10 $/Monat.
 Aktivierung: ENV APIFY_TOKEN setzen — lauf.py nutzt dann automatisch diesen Agenten
 für Instagram statt gallery-dl. Ohne Token: gallery-dl-Best-Effort wie bisher.
 """
+import datetime
 import json
 import os
 import time
 import urllib.parse
 import urllib.request
+
+
+def _jetzt_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 APIFY_BASIS = "https://api.apify.com/v2"
 IG_ACTOR = os.environ.get("APIFY_IG_ACTOR", "apify~instagram-scraper")
@@ -73,15 +78,21 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
         fehler.append("apify instagram: Lauf fehlgeschlagen: %s" % e)
         return {"kandidaten": [], "fehler": fehler}
 
+    gesehene_handles = set()
     for it in items or []:
         try:
             if it.get("error"):
-                fehler.append("apify instagram @%s: %s" % (it.get("username", "?"), it["error"]))
+                # Fehler-Items tragen kein username-Feld — Profil aus der URL ableiten
+                quelle_url = it.get("url") or it.get("inputUrl") or ""
+                wer = it.get("username") or quelle_url.rstrip("/").split("/")[-1] or "?"
+                fehler.append("apify instagram @%s: %s" % (wer, it["error"]))
                 continue
             kurz = it.get("shortCode") or it.get("shortcode")
             if not kurz:
                 continue
             handle = (it.get("ownerUsername") or "").lower()
+            if handle:
+                gesehene_handles.add(handle)
             caption = it.get("caption") or ""
             kandidaten.append({
                 "id": "instagram:%s" % kurz,
@@ -100,6 +111,7 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
                 "thumbnail_url": it.get("displayUrl"),
                 "caption": caption[:3000],
                 "transkript": None,
+                "gefunden_am": _jetzt_iso(),
                 "quelle": "watchlist",
                 "status": "inbox",
                 "score": 0,
@@ -111,5 +123,10 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
         except Exception as e:
             fehler.append("apify instagram item: %s" % e)
         time.sleep(0)  # kein Rate-Limit nötig — Apify liefert gesammelt
+
+    # Abdeckungs-Check: angefragte Profile, die weder Posts noch Fehler-Item lieferten
+    for handle, name in handle_zu_name.items():
+        if handle not in gesehene_handles and not any(("@%s" % handle) in f for f in fehler):
+            fehler.append("apify instagram @%s (%s): 0 Posts geliefert — Handle pruefen" % (handle, name))
 
     return {"kandidaten": kandidaten, "fehler": fehler}
