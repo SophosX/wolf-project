@@ -1,22 +1,22 @@
 # Caddy: automatisches HTTPS (Let's Encrypt) für beide Hosts.
-# suesstoffmafia.de        -> statische Landing (landing/, Bind-Mount)
-# radar.suesstoffmafia.de  -> Wolf-Radar-App (Container radar:3000)
+# suessstoffmafia.de        -> statische Landing (landing/, Bind-Mount)
+# radar.suessstoffmafia.de  -> Wolf-Radar-App (Container radar:3000)
 
 {
 	email business@sustinerin.de
 }
 
-suesstoffmafia.de {
+suessstoffmafia.de {
 	root * /srv/landing
 	encode zstd gzip
 	file_server
 }
 
-www.suesstoffmafia.de {
-	redir https://suesstoffmafia.de{uri} permanent
+www.suessstoffmafia.de {
+	redir https://suessstoffmafia.de{uri} permanent
 }
 
-radar.suesstoffmafia.de {
+radar.suessstoffmafia.de {
 	encode zstd gzip
 	reverse_proxy radar:3000
 }

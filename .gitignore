@@ -28,3 +28,6 @@ daten/.yt_subs_429_cooldown
 
 # Server-Umgebung (VPS) — nie committen
 .env.server
+
+# Server-spezifische Compose-Overrides (pro Host anders) — nicht committen
+docker-compose.override.yml

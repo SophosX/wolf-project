@@ -11,7 +11,7 @@ Vorschläge); vorhandene Daten werden nie überschrieben.
 
 - VPS mit Ubuntu/Debian, Docker + Docker-Compose-Plugin
   (`curl -fsSL https://get.docker.com | sh`, falls noch nicht installiert)
-- Domain `suesstoffmafia.de` (Hostinger)
+- Domain `suessstoffmafia.de` (Hostinger)
 
 ## 1. DNS (Hostinger-Panel, einmalig)
 
@@ -21,7 +21,7 @@ Vorschläge); vorhandene Daten werden nie überschrieben.
 | A   | `www` | VPS-IP     |
 | A   | `radar` | VPS-IP   |
 
-Warten, bis `dig +short suesstoffmafia.de` die VPS-IP zeigt — vorher bekommt
+Warten, bis `dig +short suessstoffmafia.de` die VPS-IP zeigt — vorher bekommt
 Caddy keine Zertifikate.
 
 ## 2. Klonen & konfigurieren
@@ -46,9 +46,9 @@ docker compose ps                # radar sollte "healthy" werden
 docker compose logs -f scraper   # supercronic zeigt die geplanten Jobs
 ```
 
-- `https://suesstoffmafia.de` → Landing (E-Book + Radar)
-- `https://suesstoffmafia.de/buch.pdf` → E-Book lädt
-- `https://radar.suesstoffmafia.de` → Wolf Radar mit dem Seed-Bestand
+- `https://suessstoffmafia.de` → Landing (E-Book + Radar)
+- `https://suessstoffmafia.de/buch.pdf` → E-Book lädt
+- `https://radar.suessstoffmafia.de` → Wolf Radar mit dem Seed-Bestand
 
 ## 4. Ersten Scraper-Lauf anstoßen (optional, statt auf die 4-h-Marke zu warten)
 
