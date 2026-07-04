@@ -312,6 +312,22 @@ def main():
                 except Exception as e:
                     fehler.append("%s analyse: %s — Rohkandidaten werden gespeichert" % (quelle, e))
 
+            # Transkript-429-Schutz: Wurde ein Kandidat OHNE Transkript (Rate-Limit)
+            # mangels pruefbarem Material "aussortiert", ist das kein Urteil ueber den
+            # Inhalt, sondern ueber die Materiallage. Nicht speichern — der naechste
+            # Lauf holt das Transkript nach und urteilt mit vollem Material.
+            vertagt_ids = set()
+            for k in durch:
+                war_429 = k.pop("transkript_429", False)
+                if war_429 and (k.get("claim") or {}).get("verdict") == "aussortiert":
+                    vertagt_ids.add(k.get("id"))
+            if vertagt_ids:
+                durch = [k for k in durch if k.get("id") not in vertagt_ids]
+                meldung = ("%s: %d Kandidat(en) vertagt — 'aussortiert' ohne Transkript "
+                           "(429), Retry im naechsten Lauf" % (quelle, len(vertagt_ids)))
+                print("[lauf] " + meldung)
+                fehler.append(meldung)
+
             n, a = speicher.speichere_videos(durch)
             neu, gesamt_neu, gesamt_aktualisiert = n, gesamt_neu + n, gesamt_aktualisiert + a
             for k in durch:

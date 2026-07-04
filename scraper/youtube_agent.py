@@ -414,10 +414,14 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
             kand["transkript"] = text
             erfolgreich += 1
         # YouTube drosselt den Untertitel-Endpunkt IP-basiert (HTTP 429):
-        # dann sofort aufhoeren statt weiterzuhaemmern — Rest bleibt ohne
-        # Transkript (Analyse nutzt dann Titel+Caption).
+        # dann sofort aufhoeren statt weiterzuhaemmern. Betroffene Kandidaten
+        # werden markiert: endet ihre Analyse mangels Material als "aussortiert",
+        # verwirft lauf.py das Urteil und der naechste Lauf versucht es mit Transkript.
         neue_fehler = fehler[vorher:]
         if any("429" in f for f in neue_fehler):
+            for offen in ziel[ziel.index(kand):]:
+                if not offen.get("transkript"):
+                    offen["transkript_429"] = True
             fehler.append("youtube transkripte: HTTP 429 (Rate-Limit) — restliche %d Transkripte uebersprungen"
                           % (len(ziel) - ziel.index(kand) - 1))
             break
