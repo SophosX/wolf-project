@@ -1,56 +1,94 @@
-# Wolf Radar — Deployment-Runbook
+# Deployment: eigener VPS (Hostinger) mit Docker
 
-> Voraussetzungen vom User: (1) `gh auth login` erledigt, (2) Vercel-Token, (3) Supabase Project-URL + service_role + anon.
+Ein `git clone`, eine `.env`, ein `docker compose up` — mehr braucht der Server nicht.
+Drei Container: **caddy** (HTTPS + Landing), **radar** (Next.js-App), **scraper**
+(Python-Cron). Die Daten leben als JSON im Docker-Volume `daten`
+(`DATEN_MODUS=lokal`) — **kein Supabase nötig**. Beim ersten Start wird der
+mitgelieferte Bestand aus `deploy/seed/daten/` eingespielt (88 Videos, Einstellungen,
+Vorschläge); vorhandene Daten werden nie überschrieben.
 
-## 1. GitHub (Code + Cron)
+## Voraussetzungen
 
-```bash
-cd 05_webapp/wolf-radar
-gh repo create wolf-radar --private --source . --push
-# Secrets für den Scraper-Cron:
-gh secret set YT_API_KEY --body "$YT_API_KEY"
-gh secret set GEMINI_API_KEY --body "$GEMINI_API_KEY"
-gh secret set SUPABASE_URL --body "https://<projekt>.supabase.co"
-gh secret set SUPABASE_SERVICE_KEY --body "<service_role>"
-gh secret set APIFY_TOKEN --body "$APIFY_TOKEN"   # Instagram-Scraping (zuverlässig)
-# optional: gh secret set IG_SESSIONID --body "<cookie>"  # nur als Apify-Alternative
-gh workflow enable radar-cron.yml
-gh workflow run radar-cron.yml   # erster manueller Lauf
-```
+- VPS mit Ubuntu/Debian, Docker + Docker-Compose-Plugin
+  (`curl -fsSL https://get.docker.com | sh`, falls noch nicht installiert)
+- Domain `suesstoffmafia.de` (Hostinger)
 
-## 2. Supabase (Datenbank)
+## 1. DNS (Hostinger-Panel, einmalig)
 
-1. SQL-Editor → Inhalt von `supabase_schema.sql` ausführen
-2. Bestehende lokale Funde migrieren:
-   ```bash
-   export SUPABASE_URL=... SUPABASE_SERVICE_KEY=... DATEN_MODUS=supabase
-   python3 scraper/migriere_lokal_zu_supabase.py   # schreibt daten/*.json in die Tabellen
-   ```
+| Typ | Name  | Wert       |
+|-----|-------|------------|
+| A   | `@`   | VPS-IP     |
+| A   | `www` | VPS-IP     |
+| A   | `radar` | VPS-IP   |
 
-## 3. Vercel (App)
+Warten, bis `dig +short suesstoffmafia.de` die VPS-IP zeigt — vorher bekommt
+Caddy keine Zertifikate.
+
+## 2. Klonen & konfigurieren
 
 ```bash
-npm i -g vercel
-VERCEL_TOKEN=<token> vercel link --yes
-VERCEL_TOKEN=<token> vercel env add SUPABASE_URL production        # Project-URL
-VERCEL_TOKEN=<token> vercel env add SUPABASE_SERVICE_KEY production
-VERCEL_TOKEN=<token> vercel env add GEMINI_API_KEY production
-VERCEL_TOKEN=<token> vercel env add RADAR_ZUGANGSCODE production   # OPTIONAL — ungesetzt ist die App offen; z.B. "wolfradar2026"
-VERCEL_TOKEN=<token> vercel env add DATEN_MODUS production         # "supabase"
-VERCEL_TOKEN=<token> vercel --prod
+git clone https://github.com/SophosX/wolf-project.git /opt/wolf-project
+cd /opt/wolf-project
+cp deploy/.env.server.beispiel .env.server
+nano .env.server        # GEMINI_API_KEY, YT_API_KEY, APIFY_TOKEN eintragen
 ```
 
-## 4. Abnahme-Checks nach Deploy
+## 3. Starten
 
-- [ ] `https://<app>.vercel.app/` lädt direkt ins Dashboard (bzw. Zugangscode, falls gesetzt)
-- [ ] Inbox zeigt migrierte Funde
-- [ ] Annehmen → Skript-Paket sichtbar; Feedback persistiert (Supabase Table Editor prüfen)
-- [ ] /api/faktencheck live (Gemini erreichbar von Vercel)
-- [ ] GitHub Action manuell getriggert → neue agent_runs-Zeile + ggf. neue Videos in Supabase
-- [ ] Mobile-Check auf echtem Handy
-- [ ] Zugangsdaten (URL + Code) in 06_abgabe/ABGABE_CHECKLISTE.md eintragen
+```bash
+docker compose up -d --build     # erster Build ~3–5 Minuten
+```
+
+Prüfen:
+
+```bash
+docker compose ps                # radar sollte "healthy" werden
+docker compose logs -f scraper   # supercronic zeigt die geplanten Jobs
+```
+
+- `https://suesstoffmafia.de` → Landing (E-Book + Radar)
+- `https://suesstoffmafia.de/buch.pdf` → E-Book lädt
+- `https://radar.suesstoffmafia.de` → Wolf Radar mit dem Seed-Bestand
+
+## 4. Ersten Scraper-Lauf anstoßen (optional, statt auf die 4-h-Marke zu warten)
+
+```bash
+docker compose exec scraper sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
+```
+
+## 5. Updates einspielen
+
+```bash
+cd /opt/wolf-project
+git pull
+docker compose up -d --build     # Volume "daten" bleibt erhalten
+```
+
+Etwa monatlich zusätzlich `docker compose build --no-cache scraper` — das zieht
+yt-dlp/gallery-dl frisch (YouTube/TikTok ändern sich laufend). Gelegentlich
+`docker system prune -f` gegen wachsenden Build-Cache.
+
+## Zeitplan des Scrapers (deploy/crontab, UTC)
+
+- alle 4 h: YouTube + TikTok
+- täglich 05:30: Instagram (Apify) + Transkript-Backfill
 
 ## Hinweise
 
-- Scraper laufen NICHT auf Vercel (yt-dlp braucht echte Runtime) — sie laufen im GitHub-Actions-Cron und schreiben direkt in Supabase. Die App liest nur.
-- YouTube-Quota: 8 Suchqueries/Lauf × 6 Läufe/Tag ≈ 9.600 Einheiten — knapp unterm 10k-Limit. Bei Quota-Fehlern RADAR_QUERIES_PRO_LAUF=6 setzen.
+- **Zugangsschutz:** Die App läuft bewusst offen (Entscheidung 2026-07-04). Wer sie
+  absichern will, setzt in `.env.server` die Zeile `RADAR_ZUGANGSCODE=…` — mehr ist
+  nicht nötig (Middleware ist opt-in).
+- **Loom-Video:** Link in `landing/index.html` beim Button `id="loom"` eintragen.
+- **YouTube-Quota:** 8 Suchqueries/Lauf × 6 Läufe/Tag ≈ 9.600 Einheiten — knapp
+  unterm 10k-Limit. Bei Quota-Fehlern `RADAR_QUERIES_PRO_LAUF=6` setzen.
+- **VPS-IP-Rate-Limits:** Rechenzentrums-IPs bekommen bei YouTube-Untertiteln eher
+  HTTP 429 — der Audio-Fallback + 30-min-Cooldown fangen das ab; notfalls
+  `RADAR_SUBS_COOLDOWN_S` erhöhen.
+- **GitHub-Actions-Workflow** (`.github/workflows/radar-cron.yml`): nur noch manueller
+  Fallback (workflow_dispatch, braucht Repo-Secrets + Supabase) — der Regelbetrieb
+  läuft im scraper-Container.
+- **Logs:** `docker compose logs -f radar` bzw. `scraper`; Agenten-Läufe zusätzlich
+  im App-Panel unter `/agenten`.
+- **Lokaler Mac-Betrieb** (launchd-Jobs `de.wolfradar.*`): nach erfolgreichem
+  Server-Gang abschalten mit
+  `launchctl unload ~/Library/LaunchAgents/de.wolfradar.radar.plist ~/Library/LaunchAgents/de.wolfradar.taeglich.plist`.

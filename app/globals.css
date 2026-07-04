@@ -194,11 +194,26 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
 .vorschlag-text { font-size: 14px; font-weight: 600; }
 .vorschlag-ableitung { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
 
-/* Belege aus der Websuche-Verifikation (Stufe C+) direkt an der Karte */
-.claim-quellen { margin-top: 6px; font-size: 12.5px; color: var(--text-dim); }
-.claim-quellen b { color: var(--text); font-weight: 600; }
-.claim-quellen a { color: var(--akzent); text-decoration: none; }
-.claim-quellen a:hover { text-decoration: underline; }
+/* Belege/Quellen als nummerierte, klickbare Pills (Karte, Skripte, Faktencheck) */
+.quellen-pills { margin-top: 8px; }
+.quellen-pills-label {
+  display: block; font-size: 13px; font-weight: 600; color: var(--text);
+  margin-bottom: 5px;
+}
+.quellen-pills-liste { display: flex; flex-wrap: wrap; gap: 6px; }
+.quelle-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; line-height: 1.2; color: var(--text);
+  background: var(--flaeche-hell); border: 1px solid var(--linie);
+  border-radius: 16px; padding: 4px 10px 4px 4px; text-decoration: none;
+  overflow-wrap: anywhere; max-width: 100%;
+}
+.quelle-pill:hover { border-color: var(--akzent); color: var(--akzent); }
+.quelle-pill-nr {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--akzent); color: #fff; font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 
 .chip {
   display: inline-block; font-size: 12px; font-weight: 600;
@@ -295,10 +310,19 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
   max-width: 720px; width: 100%; max-height: 85vh; display: flex; flex-direction: column;
 }
 .modal-kopf {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 14px 16px; border-bottom: 1px solid var(--linie); font-weight: 700;
+  overflow-wrap: anywhere;
 }
-.modal-inhalt { padding: 14px 16px; overflow-y: auto; }
+.modal-inhalt {
+  padding: 14px 16px; overflow-y: auto; overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+/* Mobil: Modal als Vollbild-Sheet — nichts ragt heraus, alles scrollbar */
+@media (max-width: 639px) {
+  .modal-hintergrund { padding: 0; align-items: stretch; }
+  .modal { max-width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; border: none; }
+}
 
 /* ---------- Banner / Leerzustand ---------- */
 
@@ -372,3 +396,25 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
   .karte-layout .karte-thumb img, .karte-layout .thumb-platzhalter { height: 100%; aspect-ratio: auto; min-height: 146px; }
   .zitat { font-size: 20px; }
 }
+
+/* ---------- Responsive: Tablet/Laptop — mehr Raum, größere Thumbnails ---------- */
+
+@media (min-width: 900px) {
+  .karte-layout { grid-template-columns: 300px 1fr; }
+  .karte-inhalt { padding: 16px 18px; }
+}
+
+@media (min-width: 1200px) {
+  .container, .kopf-innen { max-width: 980px; }
+}
+
+/* Fehlertexte im Agenten-Panel: nie horizontal sprengen, Historie einklappbar */
+.fehler-zelle { overflow-wrap: anywhere; max-width: 480px; }
+.fehler-zelle details summary {
+  cursor: pointer; color: var(--rot); font-weight: 600; list-style: none;
+}
+.fehler-zelle details summary::before { content: "▸ "; }
+.fehler-zelle details[open] summary::before { content: "▾ "; }
+
+/* Eingabe-Zeilen (Vorschlag, Ablehnen-Grund): auf Mobil umbrechen */
+.mini-menue .zeile, .vorschlag-box .zeile { flex-wrap: wrap; }

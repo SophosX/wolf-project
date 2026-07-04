@@ -1,17 +1,12 @@
-# Wolf Radar — Scraper-Cron
-# YouTube + TikTok laufen alle 4 Stunden; Instagram nur 1x taeglich
-# (eigener Schedule-Eintrag 05:30 UTC — IG rate-limitet aggressiv).
-# Manuell via workflow_dispatch laufen alle drei Quellen.
-# Kandidaten + agent_run-Protokolle gehen nach Supabase (DATEN_MODUS=supabase).
-# Auch bei Agenten-Fehlern schreibt lauf.py sein Protokoll — die App zeigt
-# Ausfaelle im Agenten-Status-Panel statt still zu scheitern.
+# Wolf Radar — Scraper via GitHub Actions (NUR manueller Fallback).
+# Der Regelbetrieb laeuft auf dem VPS im scraper-Container (deploy/crontab).
+# Dieser Workflow bleibt als manuell startbare Alternative erhalten und
+# braucht dafuer die Repo-Secrets (YT/GEMINI/SUPABASE/APIFY) — ohne Secrets
+# NICHT starten. Kein schedule: sonst produziert jeder Push rote Cron-Laeufe.
 
 name: radar-cron
 
 on:
-  schedule:
-    - cron: "0 */4 * * *"   # alle 4 Stunden (UTC): YouTube + TikTok
-    - cron: "30 5 * * *"    # 1x taeglich (UTC): nur Instagram
   workflow_dispatch: {}      # manueller Start im GitHub-UI: alle Quellen
 
 # Nie zwei Laeufe parallel (Merge-Semantik schuetzt zwar, aber unnoetig)

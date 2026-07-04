@@ -1,0 +1,30 @@
+{
+ "vorschlaege": [
+  {
+   "text": "Schau dir mehr Videos zu Kreatin-Mythen an, da kursiert viel Unsinn über Nierenschäden. Und beobachte bitte Liebscher-Bracht auf YouTube.",
+   "zeit": "2026-07-04T15:07:18.205Z",
+   "ableitung": {
+    "queries": [
+     "Kreatin schädlich Nieren"
+    ],
+    "kanaele": [
+     {
+      "name": "Liebscher-Bracht",
+      "plattform": "youtube",
+      "handle": "@LiebscherBracht"
+     }
+    ],
+    "themen": [
+     "protein_niere"
+    ],
+    "notiz": "Der Radar wird Videos zu Kreatin-Mythen über Nierenschäden suchen und den Kanal von Liebscher-Bracht auf YouTube beobachten."
+   }
+  }
+ ],
+ "extra_queries": [
+  {
+   "query": "Kreatin schädlich Nieren",
+   "bis": "2026-07-11T15:07:18.205Z"
+  }
+ ]
+}

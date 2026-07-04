@@ -8,6 +8,7 @@ import { useState } from "react";
 import { formatViews, formatDauer, relativeZeit, velocity } from "@/lib/format";
 import { themaLabel } from "@/lib/typen";
 import type { Video } from "@/lib/typen";
+import QuellenPills from "./QuellenPills";
 import ScoreRing from "./ScoreRing";
 import SkriptPaket from "./SkriptPaket";
 
@@ -118,17 +119,11 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
                     {video.claim.begruendung}
                   </p>
                   {(video.claim.quellen?.length ?? 0) > 0 && (
-                    <p className="claim-quellen">
-                      <b>Belege:</b>{" "}
-                      {video.claim.quellen!.slice(0, 4).map((q, i) => (
-                        <span key={q.url}>
-                          {i > 0 && " · "}
-                          <a href={q.url} target="_blank" rel="noopener noreferrer" title={q.titel}>
-                            {q.titel.length > 40 ? q.titel.slice(0, 38) + "…" : q.titel}
-                          </a>
-                        </span>
-                      ))}
-                    </p>
+                    <QuellenPills
+                      quellen={video.claim.quellen!}
+                      label="Belege aus der Websuche:"
+                      max={4}
+                    />
                   )}
                   {video.claim.thema && (
                     <span className="chip"># {themaLabel(video.claim.thema)}</span>

@@ -1,0 +1,18 @@
+{
+  "gelernt": {
+    "themen_boost": {
+      "suessstoffe": 0.3,
+      "detox": 0.15,
+      "honig": 0.15,
+      "saftkur": -0.3,
+      "abnehmen": -0.15
+    },
+    "notizen": [
+      "Thema „Süßstoffe“ angenommen → wird höher gewichtet (Boost 0.3)",
+      "Thema „Abnehmen“ abgelehnt („nicht klar falsch — der Matcha-Effekt existiert, er ist nur winzig“) → wird niedriger gewichtet (Boost -0.15)",
+      "Thema „Saftkur“ abgelehnt („zu klein — und reine Anzeige, auf bezahlte Werbung reagieren wir nicht“) → wird niedriger gewichtet (Boost -0.3)",
+      "Kommentar zu „Abendessen: Meine 5 No-Gos nach 18 Uhr“: „gut für ein Kombi-Video mit dem Frühstücks-Mythos“"
+    ]
+  },
+  "zuletzt_gelernt": "2026-07-03T00:36:25.760Z"
+}

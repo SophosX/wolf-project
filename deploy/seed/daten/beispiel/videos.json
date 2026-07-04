@@ -1,0 +1,507 @@
+[
+  {
+    "id": "youtube:rMMbpY9NVx0",
+    "plattform": "youtube",
+    "video_id": "rMMbpY9NVx0",
+    "url": "https://www.youtube.com/watch?v=rMMbpY9NVx0",
+    "titel": "-4kg Müll aus Darm Rezept #gesundheitstipps #ernährungstipps #morgenroutine",
+    "kanal": "Fabian Kowallik",
+    "kanal_id": "UCQlvHgLN06bF7YpvAgqg91Q",
+    "kanal_follower": 443000,
+    "veroeffentlicht": "2025-08-05T14:16:36Z",
+    "views": 738182,
+    "likes": 16226,
+    "kommentare": 411,
+    "dauer_s": 31,
+    "thumbnail_url": "https://i.ytimg.com/vi/rMMbpY9NVx0/maxresdefault.jpg",
+    "caption": "",
+    "transkript": "Dein Darm ist wie ein Abflussrohr, da kleben bis zu vier Kilo alter Müll drin. Und genau den spülst du mit diesem Rezept raus. Du nimmst warmes Wasser, Flohsamenschalen, einen Schuss Apfelessig und trinkst das jeden Morgen auf leeren Magen. Nach drei Tagen bist du vier Kilo leichter, dein Bauch ist flacher und deine Haut wird besser. Das ist der Müll, der seit Jahren in dir gammelt.",
+    "gefunden_am": "2026-07-03T17:36:25.760Z",
+    "quelle": "watchlist",
+    "status": "inbox",
+    "skripte": [],
+    "feedback": [],
+    "score": 92,
+    "scores": {
+      "reichweite": 88,
+      "relevanz": 95,
+      "tauglichkeit": 96
+    },
+    "claim": {
+      "aussage": "In deinem Darm kleben bis zu 4 Kilo alter Müll — mit diesem Rezept spülst du ihn in 3 Tagen raus.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.96,
+      "begruendung": "Es gibt keine „Schlacken“ im Darm — entgiftet wird über Leber und Niere, und verlorenes Gewicht ist Wasser/Darminhalt, kein Fett.",
+      "thema": "detox"
+    }
+  },
+  {
+    "id": "youtube:mdPveC7HlFM",
+    "plattform": "youtube",
+    "video_id": "mdPveC7HlFM",
+    "url": "https://www.youtube.com/watch?v=mdPveC7HlFM",
+    "titel": "Kein Zucker! Gesunde Kekse ohne Mehl, Zucker und Gluten! Energiedessert für jeden Tag!",
+    "kanal": "Süß und Gesund",
+    "kanal_id": "UCnOhtC4hIKH5YyzZRZG5plA",
+    "kanal_follower": 521000,
+    "veroeffentlicht": "2024-11-16T14:33:00Z",
+    "views": 6566784,
+    "likes": 179455,
+    "kommentare": 5708,
+    "dauer_s": 528,
+    "thumbnail_url": "https://i.ytimg.com/vi/mdPveC7HlFM/maxresdefault.jpg",
+    "caption": "So backen Sie gesunde Kekse ohne Mehl, ohne Zucker und ohne Gluten! Das beste Energiedessert für jeden Tag!\n\nSchnapp dir einfach Haferflocken und Nüsse!\nEin sehr nahrhafter Snack!\n\nDies ist ein einfaches hausgemachtes Rezept für zuckerfreie Kekse!\nEin gesundes Dessert, das sich ganz einfach zu Hause",
+    "transkript": null,
+    "gefunden_am": "2026-07-03T15:36:25.760Z",
+    "quelle": "claim_suche",
+    "status": "inbox",
+    "skripte": [],
+    "feedback": [],
+    "score": 81,
+    "scores": {
+      "reichweite": 97,
+      "relevanz": 78,
+      "tauglichkeit": 55
+    },
+    "claim": {
+      "aussage": "Kein Zucker! Gesunde Kekse ohne Mehl, Zucker und Gluten — nur mit Datteln gesüßt.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.9,
+      "begruendung": "Datteln bestehen zu ~65 % aus Zucker — „ohne Zucker, mit Datteln gesüßt“ ist ernährungsphysiologisch derselbe Zucker, nur teurer.",
+      "thema": "datteln"
+    }
+  },
+  {
+    "id": "youtube:4QUxYDf7UrU",
+    "plattform": "youtube",
+    "video_id": "4QUxYDf7UrU",
+    "url": "https://www.youtube.com/watch?v=4QUxYDf7UrU",
+    "titel": "Honig ist KEIN Zucker!",
+    "kanal": "Rainer Krüger",
+    "kanal_id": "UCBxh-zDsxx3zioKqDbAgxTg",
+    "kanal_follower": 36600,
+    "veroeffentlicht": "2024-07-29T19:33:34Z",
+    "views": 271646,
+    "likes": 8196,
+    "kommentare": 310,
+    "dauer_s": 53,
+    "thumbnail_url": "https://i.ytimg.com/vi/4QUxYDf7UrU/maxresdefault.jpg",
+    "caption": "",
+    "transkript": "Honig ist kein Zucker, Leute. Honig ist ein lebendiges Naturprodukt mit über 200 Inhaltsstoffen, Enzymen, Mineralien. Das kann man überhaupt nicht mit Industriezucker vergleichen. Wer Honig isst, isst keine leeren Kalorien.",
+    "gefunden_am": "2026-07-03T12:36:25.760Z",
+    "quelle": "claim_suche",
+    "status": "inbox",
+    "skripte": [],
+    "feedback": [],
+    "score": 80,
+    "scores": {
+      "reichweite": 76,
+      "relevanz": 88,
+      "tauglichkeit": 72
+    },
+    "claim": {
+      "aussage": "Honig ist KEIN Zucker — das ist ein lebendiges Naturprodukt mit über 200 Inhaltsstoffen.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.94,
+      "begruendung": "Honig besteht zu ~80 % aus Glukose und Fruktose; die Spurenstoffe ändern an Kalorien und Blutzuckerwirkung praktisch nichts (Naturalistic Fallacy).",
+      "thema": "honig"
+    }
+  },
+  {
+    "id": "tiktok:7655959689880030486",
+    "plattform": "tiktok",
+    "video_id": "7655959689880030486",
+    "url": "https://www.tiktok.com/@nngworld/video/7655959689880030486",
+    "titel": "Kakao & Honig — NNG Community",
+    "kanal": "nngworld by Coach Aaron",
+    "kanal_id": "nngworld",
+    "kanal_follower": null,
+    "veroeffentlicht": "2026-07-03T10:35:00.000Z",
+    "views": 863,
+    "likes": 28,
+    "kommentare": 1,
+    "dauer_s": 24,
+    "thumbnail_url": null,
+    "caption": "Kakao & Honig • NNG Community beitreten (Link in Bio) 🥷❤️‍🔥 • ⬇️Hier sparen mit NNG10: 🍫 @roroh_offiziell 🍯 @allgaeuerwanderimkerei — Anzeige • #nng #coachaaron #gottesnahrung #gesundheit",
+    "transkript": "Roher Honig ist Gottesnahrung. Der kurbelt deinen Stoffwechsel an, gibt dir Mineralien, Enzyme — Industriezucker dagegen legt deinen Stoffwechsel lahm. Deswegen: Kakao mit Honig statt Schokoriegel.",
+    "gefunden_am": "2026-07-03T19:36:25.760Z",
+    "quelle": "watchlist",
+    "status": "inbox",
+    "score": 68,
+    "scores": {
+      "reichweite": 25,
+      "relevanz": 95,
+      "tauglichkeit": 98
+    },
+    "claim": {
+      "aussage": "Roher Honig ist Gottesnahrung — er kurbelt deinen Stoffwechsel an, Industriezucker legt ihn lahm.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.95,
+      "begruendung": "Honig und Haushaltszucker sind metabolisch fast identisch (~80 % Zucker) — einen stoffwechselankurbelnden Effekt gibt es nicht.",
+      "thema": "honig"
+    },
+    "skripte": [],
+    "feedback": []
+  },
+  {
+    "id": "youtube:4ukfl1NZBsw",
+    "plattform": "youtube",
+    "video_id": "4ukfl1NZBsw",
+    "url": "https://www.youtube.com/watch?v=4ukfl1NZBsw",
+    "titel": "Frühstück & Morgenroutine: 5 Fehler, die ich morgens nicht mehr mache!",
+    "kanal": "DoktorWeigl",
+    "kanal_id": "UC-Ivlaz1y9TToFnpzmA7adw",
+    "kanal_follower": 1300000,
+    "veroeffentlicht": "2024-05-01T15:15:00Z",
+    "views": 707976,
+    "likes": 16571,
+    "kommentare": 1113,
+    "dauer_s": 792,
+    "thumbnail_url": "https://i.ytimg.com/vi/4ukfl1NZBsw/maxresdefault.jpg",
+    "caption": "Das Frühstück ist bei vielen leider überhaupt kein perfekter Start in den Tag! Viele Menschen machen nämlich immer wieder die gleichen Fehler. Wenn Sie morgens nichts essen, kann sich das über den Tag rächen, wenn dann nämlich die ungeliebten Heißhungerattacken kommen. Dann rennen wir schnell zum Bä",
+    "transkript": "Fehler Nummer eins: das Frühstück komplett auslassen. Viele denken, sie sparen damit Kalorien. Aber wer das Frühstück auslässt, fährt seinen Stoffwechsel herunter und nimmt langfristig eher zu. Der Körper schaltet in eine Art Sparmodus...",
+    "gefunden_am": "2026-07-02T18:36:25.760Z",
+    "quelle": "watchlist",
+    "status": "angenommen",
+    "skripte": [
+      {
+        "variante": 1,
+        "hook_typ": "o_ton_konter",
+        "inhalt_md": "**Hook (O-Ton einblenden):** „Wer das Frühstück auslässt, fährt seinen Stoffwechsel herunter und nimmt langfristig zu.“ — Moment. Reden wir hier wirklich noch über den Stoffwechsel-Mythos von 2005? Ui. Pass mal auf.\n\n**Kontext:** Das sagt ein Arzt mit über einer Million Followern — und genau deswegen müssen wir da kurz drüber reden. Ich hatte mit Dr. Weigl schon öfter Meinungsverschiedenheiten, aber immer fair, ne.\n\n**Widerlegung:** Es gibt hierzu eine ganz klare Einordnung der Meta-Analysen: Die große BMJ-Auswertung von 13 randomisierten Studien zeigt — Frühstücksesser nehmen im Schnitt **260 kcal MEHR pro Tag** auf und sind etwa ein halbes Kilo schwerer. Dein Stoffwechsel fährt nicht runter, wenn du morgens nichts isst. Dein Körper ist keine beleidigte Diva, er rechnet einfach Kalorien. 260 kcal jeden Tag extra — das sind nach Adam Riese über **12 Kilo Körperfett-Potenzial im Jahr**. Kann jeder mit Dreisatz selbst nachrechnen.\n\n**Fairness-Anker:** Was stimmt: Wer morgens isst und dafür abends nicht snackt, fährt damit super. Für Kinder und Leute mit Blutzucker-Themen kann ein Frühstück total sinnvoll sein — sagt auch niemand was dagegen.\n\n**Was heißt das für dich:** Frühstück ist keine Pflicht und kein Verbot. Wenn du abnehmen willst, zählt dein Gesamt-Defizit plus High Protein. Bock auf Frühstück? Iss eins. Kein Hunger morgens? Dann ist Frühstück-Skippen quasi ein Gratis-Kaloriendefizit. Fertig.\n\n**Schluss:** Am Ende ist die Welt in Ordnung: Es gibt keine wichtigste Mahlzeit — es gibt nur deine Bilanz. Wenn du abnehmen willst, ohne dich verrückt zu machen, dann solltest du mir schnell folgen.",
+        "quellen": [
+          {
+            "titel": "BMJ 2019 (Sievert et al.): Effect of breakfast on weight and energy intake — Meta-Analyse von 13 RCTs",
+            "url": "https://www.bmj.com/content/364/bmj.l42"
+          },
+          {
+            "titel": "DGE: Ernährungsempfehlungen — keine Pflicht-Mahlzeitenfrequenz",
+            "url": "https://www.dge.de/gesunde-ernaehrung/dge-ernaehrungsempfehlungen/"
+          },
+          {
+            "titel": "Übersicht Intermittent Fasting / Mahlzeiten-Timing (Examine)",
+            "url": "https://examine.com/outcomes/weight-loss/"
+          }
+        ]
+      },
+      {
+        "variante": 2,
+        "hook_typ": "frage_hook",
+        "inhalt_md": "**Hook:** Kennst du die Leute, die dir erzählen, das Frühstück sei die wichtigste Mahlzeit des Tages — und ohne gehst du quasi kaputt? Na ja, pass mal auf, was die Datenlage wirklich sagt.\n\n**Kontext:** Ein Ernährungsmediziner mit riesiger Reichweite erzählt gerade wieder, ohne Frühstück fahre der Stoffwechsel runter. Klingt logisch — ist aber Quatsch.\n\n**Widerlegung:** Die Meta-Analyse im BMJ über 13 kontrollierte Studien: Frühstücken macht dich nicht schlanker — im Gegenteil, die Frühstücksgruppen haben im Schnitt 260 Kalorien MEHR am Tag gegessen. Der „heruntergefahrene Stoffwechsel“? Messbar ist da nichts, was auch nur in die Nähe einer Mahlzeit kommt. Woher kommt der Mythos? Aus Beobachtungsstudien: Menschen, die frühstücken, leben oft insgesamt gesünder. Das ist Korrelation, keine Kausalität — klassische Reverse Causation.\n\n**Fairness-Anker:** Fair bleiben: In dem Video stecken auch gute Punkte, zum Beispiel mehr Protein am Morgen. Den Teil kann man so unterschreiben.\n\n**Was heißt das für dich:** Du bist Frühstücksmensch? Geil, bleib dabei — pack Protein rein. Du kriegst morgens nichts runter? Dann zwing dich nicht. Ein Proteinshake statt Frühstück und du hast easy Kalorien gespart und Protein erhöht. Welche Marke, ist am Ende euer Ding.\n\n**Schluss:** Arbeitet mit eurer Psychologie, nicht gegen sie. Die wichtigste Mahlzeit ist die, die dich in DEINEM Defizit hält. Punkt.",
+        "quellen": [
+          {
+            "titel": "BMJ 2019 (Sievert et al.): Effect of breakfast on weight and energy intake — Meta-Analyse von 13 RCTs",
+            "url": "https://www.bmj.com/content/364/bmj.l42"
+          },
+          {
+            "titel": "DGE: Ernährungsempfehlungen — keine Pflicht-Mahlzeitenfrequenz",
+            "url": "https://www.dge.de/gesunde-ernaehrung/dge-ernaehrungsempfehlungen/"
+          },
+          {
+            "titel": "Übersicht Intermittent Fasting / Mahlzeiten-Timing (Examine)",
+            "url": "https://examine.com/outcomes/weight-loss/"
+          }
+        ]
+      },
+      {
+        "variante": 3,
+        "hook_typ": "empoerungs_hook",
+        "inhalt_md": "**Hook:** Ich komme einfach nicht drauf klar, dass wir 2026 immer noch Leuten Angst machen, ihr Stoffwechsel würde „einschlafen“, wenn sie mal kein Müsli um 7 Uhr essen. Diger. Das ist wirklich so absurd.\n\n**Kontext:** Ein Arzt — also jemand, dem Menschen zu Recht erstmal glauben — verbreitet gerade den ältesten Diät-Mythos überhaupt. Und genau deshalb machen wir das hier einmal sauber.\n\n**Widerlegung:** Erstens: Meta-Analyse, BMJ, 13 randomisierte Studien — Frühstück auslassen führt NICHT zu Gewichtszunahme, die Frühstücksgruppen aßen sogar ~260 kcal mehr. Zweitens: „Stoffwechsel herunterfahren“ — dafür gibt es schlicht keine Grundlage. Adaptive Thermogenese ist ein Thema bei wochenlangen Crash-Diäten, nicht bei einem ausgelassenen Marmeladenbrötchen. Drittens die Rechnung: Wer sein 400-kcal-Frühstück skippt und den Rest des Tages normal isst, spart im Jahr über 140.000 kcal — das Potenzial von rund 18 Kilo Körperfett. Ist auch total logisch, wenn du das mal durchrechnest.\n\n**Fairness-Anker:** Zugeständnis: Für Leute, die ohne Frühstück abends unkontrolliert reinhauen, ist Frühstücken ein super Tool. Es geht um Flexibilität, nicht um ein neues Verbot.\n\n**Was heißt das für dich:** Hör auf, auf die Uhr zu essen. Iss nach Hunger, halte dein Defizit, kriegt eure 1,5–2 g Protein pro Kilo über den Tag rein — verteilt das ansatzweise, fertig.\n\n**Schluss:** Es gibt nicht Studien und Gegenstudien — es gibt einen Datenpool. Und der sagt: Deine Bilanz zählt, nicht deine Frühstückszeit. Am Ende ist die Welt in Ordnung.",
+        "quellen": [
+          {
+            "titel": "BMJ 2019 (Sievert et al.): Effect of breakfast on weight and energy intake — Meta-Analyse von 13 RCTs",
+            "url": "https://www.bmj.com/content/364/bmj.l42"
+          },
+          {
+            "titel": "DGE: Ernährungsempfehlungen — keine Pflicht-Mahlzeitenfrequenz",
+            "url": "https://www.dge.de/gesunde-ernaehrung/dge-ernaehrungsempfehlungen/"
+          },
+          {
+            "titel": "Übersicht Intermittent Fasting / Mahlzeiten-Timing (Examine)",
+            "url": "https://examine.com/outcomes/weight-loss/"
+          }
+        ]
+      }
+    ],
+    "feedback": [
+      {
+        "aktion": "angenommen",
+        "kommentar": "Weigl = Modus B, bitte respektvoll — Arzt bleibt unter Eskalationsstufe 3",
+        "zeit": "2026-07-03T00:36:25.760Z"
+      }
+    ],
+    "score": 84,
+    "scores": {
+      "reichweite": 82,
+      "relevanz": 84,
+      "tauglichkeit": 88
+    },
+    "claim": {
+      "aussage": "Wer das Frühstück auslässt, fährt seinen Stoffwechsel herunter und nimmt langfristig zu.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.88,
+      "begruendung": "Meta-Analysen (u. a. BMJ 2019, 13 RCTs) zeigen: Frühstücksesser nehmen eher MEHR Kalorien auf; ein messbares „Herunterfahren“ des Stoffwechsels gibt es nicht.",
+      "thema": "fruehstueck"
+    }
+  },
+  {
+    "id": "youtube:oVFCzC8ERIA",
+    "plattform": "youtube",
+    "video_id": "oVFCzC8ERIA",
+    "url": "https://www.youtube.com/watch?v=oVFCzC8ERIA",
+    "titel": "Ist der Süßstoff in Cola Zero gefährlich?",
+    "kanal": "Jelly12h",
+    "kanal_id": "UCWdgEJVPflV2LgqiFoh-34A",
+    "kanal_follower": 173000,
+    "veroeffentlicht": "2026-05-31T11:02:54Z",
+    "views": 408116,
+    "likes": 11870,
+    "kommentare": 344,
+    "dauer_s": 47,
+    "thumbnail_url": "https://i.ytimg.com/vi/oVFCzC8ERIA/maxresdefault.jpg",
+    "caption": "Aspartam wird im Körper zu Methanol, Aspartinsäure und Phenylalanin abgebaut. Klingt erstmal schlimm, bis man merkt, dass genau diese Stoffe auch ganz normal in Lebensmitteln vorkommen. In einem Apfel entsteht beim Verdauen sogar mehr Methanol als in einer Cola Zero und Hähnchenbrust enthält deutlic",
+    "transkript": "Der Süßstoff in Cola Zero ist pures Nervengift. Die WHO hat Aspartam offiziell als krebserregend eingestuft. Und du kippst dir das jeden Tag rein...",
+    "gefunden_am": "2026-07-02T14:36:25.760Z",
+    "quelle": "claim_suche",
+    "status": "angenommen",
+    "skripte": [
+      {
+        "variante": 1,
+        "hook_typ": "o_ton_konter",
+        "inhalt_md": "**Hook (O-Ton einblenden):** „Der Süßstoff in Cola Zero ist pures Nervengift — die WHO hat ihn offiziell als krebserregend eingestuft.“ — Nein. Hat sie nicht. Und ich zeige euch jetzt, was da wirklich steht, weil das wirklich jeder selbst nachlesen kann.\n\n**Kontext:** Dieses Video ballert gerade durch die Decke, und in den Kommentaren haben Leute ernsthaft Angst vor ihrer Cola Light. Machen wir kurze Chemiestunde.\n\n**Widerlegung:** Die IARC hat Aspartam 2023 in **Gruppe 2B** einsortiert — „möglicherweise krebserregend bei begrenzter Evidenz“. In derselben Gruppe: Aloe Vera und eingelegtes Gemüse. Gleichzeitig — am selben Tag! — hat das JECFA, das Gremium für die tatsächliche Risikobewertung, den ADI von **40 mg pro Kilo Körpergewicht** bestätigt. Für eine 70-kg-Person sind das umgerechnet **rund 14 Dosen Cola Zero — JEDEN Tag, ein Leben lang**. Die EFSA kam 2013 nach kompletter Neubewertung zum selben Ergebnis. Die Dosis macht das Gift, ne.\n\n**Fairness-Anker:** Was stimmt: Man muss keine Light-Getränke trinken, Wasser ist immer top. Und ja, Forschung läuft weiter — das ist normal und gut so.\n\n**Was heißt das für dich:** Wenn Cola Zero dir hilft, 500 Zucker-Kalorien am Tag zu sparen, dann ist das ein Cheatcode: 75 g Zucker täglich durch Süßstoff ersetzt sind über 100.000 kcal im Jahr — das Potenzial von ~15 kg Körperfett. Das wahrscheinlich Krebserregendste, was du in deiner Ernährung machen kannst, ist übrigens: dauerhaft übergewichtig zu sein.\n\n**Schluss:** Es gibt keine Grundlage für die Panik. Packt euch das Video und stellt es in ChatGPT rein — ihr werdet euch wundern. Am Ende ist die Welt in Ordnung.",
+        "quellen": [
+          {
+            "titel": "WHO/IARC & JECFA (2023): Aspartame hazard and risk assessment — ADI 40 mg/kg bestätigt",
+            "url": "https://www.who.int/news/item/14-07-2023-aspartame-hazard-and-risk-assessment-results-released"
+          },
+          {
+            "titel": "EFSA (2013): Vollständige Neubewertung von Aspartam — sicher in üblichen Mengen",
+            "url": "https://www.efsa.europa.eu/en/efsajournal/pub/3496"
+          },
+          {
+            "titel": "BfR: Fragen und Antworten zu Süßstoffen",
+            "url": "https://www.bfr.bund.de/cm/343/bewertung_von_suessstoffen.pdf"
+          }
+        ]
+      },
+      {
+        "variante": 2,
+        "hook_typ": "frage_hook",
+        "inhalt_md": "**Hook:** Kennst du die Leute, die denken, dass sie von der Cola Zero sterben — und dann mit dem dritten Bier anstoßen? Sind wir mal ehrlich: Da läuft was schief in der Risikowahrnehmung.\n\n**Kontext:** Ein virales Video behauptet, die WHO hätte Aspartam „offiziell als krebserregend eingestuft“. Das ist ein klassisches Falschzitat der 2023er-Entscheidung — und die schauen wir uns wortgenau an.\n\n**Widerlegung:** Zwei Gremien, zwei Jobs: Die IARC bewertet, OB etwas theoretisch Krebs auslösen KÖNNTE (Hazard) — Gruppe 2B heißt „möglicherweise, begrenzte Evidenz“. Das JECFA bewertet das reale RISIKO bei echten Mengen — und hat den ADI von 40 mg/kg bestätigt. Heißt konkret: ~14 Dosen Zero pro Tag wären für eine 70-kg-Person noch innerhalb der Sicherheitsgrenze, und die hat selbst nochmal einen dicken Sicherheitspuffer eingebaut. Zum Vergleich: 250 g Äpfel enthalten mehr Methanol als 5 Liter Cola Light. Kein Mensch warnt vor Äpfeln.\n\n**Fairness-Anker:** Zugeständnis: „Süßstoffe sind zu 100 % risikofrei für alles und jeden“ sagt seriös auch niemand — die Sättigungs- und Mikrobiom-Forschung ist tatsächlich noch in Bewegung. Kann sein, muss aber nicht.\n\n**Was heißt das für dich:** Trink, was dich im Defizit hält. Cola-Light-Logik: gleiche Wahl, null Zucker-Kalorien. Wenn dich der Geschmack vom Heißhunger-Snack abhält — Gamechanger.\n\n**Schluss:** Angstmachen bringt Klicks, Rechnen bringt Ergebnisse. Ihr seid die Schiedsrichter.",
+        "quellen": [
+          {
+            "titel": "WHO/IARC & JECFA (2023): Aspartame hazard and risk assessment — ADI 40 mg/kg bestätigt",
+            "url": "https://www.who.int/news/item/14-07-2023-aspartame-hazard-and-risk-assessment-results-released"
+          },
+          {
+            "titel": "EFSA (2013): Vollständige Neubewertung von Aspartam — sicher in üblichen Mengen",
+            "url": "https://www.efsa.europa.eu/en/efsajournal/pub/3496"
+          },
+          {
+            "titel": "BfR: Fragen und Antworten zu Süßstoffen",
+            "url": "https://www.bfr.bund.de/cm/343/bewertung_von_suessstoffen.pdf"
+          }
+        ]
+      },
+      {
+        "variante": 3,
+        "hook_typ": "empoerungs_hook",
+        "inhalt_md": "**Hook:** Ich muss das leider so direkt sagen: Wer 2026 noch „Süßstoff = Nervengift“ rausballert, macht Menschen Angst, die gerade versuchen abzunehmen — und DAS ist der eigentliche Schaden. So ein Video zu veröffentlichen ist fast schon eine Beleidigung an die eigene Followerschaft.\n\n**Kontext:** Die Behauptung: WHO stuft Aspartam offiziell als krebserregend ein. Die Realität: ein zusammengeschnittenes Halbzitat.\n\n**Widerlegung:** Erstens, IARC Gruppe 2B = „möglicherweise“, begrenzte Evidenz — die schwächste Kategorie, in der auch Aloe Vera steht. Zweitens, JECFA und EFSA: ADI 40 mg/kg, mit Daten aus Jahrzehnten — für Normalverbraucher schlicht nicht erreichbar (~14 Dosen am Tag, jeden Tag). Drittens die Gegenrechnung: Wer aus Angst zurück zur Zucker-Cola wechselt, holt sich pro Liter ~420 kcal zurück ins Boot. Ein Liter am Tag ersetzt = über 150.000 kcal im Jahr — das Potenzial von ~20 Kilo Körperfett. DAS ist das reale Gesundheitsrisiko, über das wir reden sollten.\n\n**Fairness-Anker:** Fair: Wasser bleibt die beste Wahl, und niemand MUSS Light-Produkte mögen. Es geht nicht um Pro-Süßstoff — es geht um korrekte Zitate.\n\n**Was heißt das für dich:** Lass dich nicht von Buzzwords steuern. Prüf die Quelle: WHO-Pressemitteilung vom 14.07.2023, steht alles drin, dauert 3 Minuten. Nachrechnen kann jeder mit Dreisatz.\n\n**Schluss:** Die Menge macht das Gift — und die Menge an Panik in diesem Video war deutlich über dem ADI. Klappe zu, Augen auf.",
+        "quellen": [
+          {
+            "titel": "WHO/IARC & JECFA (2023): Aspartame hazard and risk assessment — ADI 40 mg/kg bestätigt",
+            "url": "https://www.who.int/news/item/14-07-2023-aspartame-hazard-and-risk-assessment-results-released"
+          },
+          {
+            "titel": "EFSA (2013): Vollständige Neubewertung von Aspartam — sicher in üblichen Mengen",
+            "url": "https://www.efsa.europa.eu/en/efsajournal/pub/3496"
+          },
+          {
+            "titel": "BfR: Fragen und Antworten zu Süßstoffen",
+            "url": "https://www.bfr.bund.de/cm/343/bewertung_von_suessstoffen.pdf"
+          }
+        ]
+      }
+    ],
+    "feedback": [
+      {
+        "aktion": "angenommen",
+        "zeit": "2026-07-02T22:36:25.760Z"
+      }
+    ],
+    "score": 79,
+    "scores": {
+      "reichweite": 74,
+      "relevanz": 90,
+      "tauglichkeit": 68
+    },
+    "claim": {
+      "aussage": "Der Süßstoff in Cola Zero ist pures Nervengift — die WHO hat ihn offiziell als krebserregend eingestuft.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.93,
+      "begruendung": "Falschzitat: IARC-Gruppe 2B heißt „möglicherweise, begrenzte Evidenz“; JECFA/EFSA bestätigen den ADI von 40 mg/kg (~14 Dosen Zero pro Tag).",
+      "thema": "suessstoffe"
+    }
+  },
+  {
+    "id": "youtube:XQRnumOPYak",
+    "plattform": "youtube",
+    "video_id": "XQRnumOPYak",
+    "url": "https://www.youtube.com/watch?v=XQRnumOPYak",
+    "titel": "Abendessen: Meine 5 No-Gos nach 18 Uhr - Ausnahmen bestätigen die Regel!",
+    "kanal": "DoktorWeigl",
+    "kanal_id": "UC-Ivlaz1y9TToFnpzmA7adw",
+    "kanal_follower": 1300000,
+    "veroeffentlicht": "2025-04-30T15:15:02Z",
+    "views": 278399,
+    "likes": 6770,
+    "kommentare": 374,
+    "dauer_s": 1118,
+    "thumbnail_url": "https://i.ytimg.com/vi/XQRnumOPYak/maxresdefault.jpg",
+    "caption": "Viele Menschen machen beim Abendessen Fehler, die nicht nur die Verdauung belasten, sondern auch langfristig gesundheitliche Probleme oder eine unerwünschte Gewichtszunahme fördern können. In diesem Video spreche ich über fünf typische Fehler beim Abendessen und darüber, wie Sie es besser machen kön",
+    "transkript": null,
+    "gefunden_am": "2026-07-01T18:36:25.760Z",
+    "quelle": "watchlist",
+    "status": "gespeichert",
+    "skripte": [],
+    "feedback": [
+      {
+        "aktion": "gespeichert",
+        "kommentar": "gut für ein Kombi-Video mit dem Frühstücks-Mythos",
+        "zeit": "2026-07-02T00:36:25.760Z"
+      }
+    ],
+    "score": 76,
+    "scores": {
+      "reichweite": 72,
+      "relevanz": 82,
+      "tauglichkeit": 70
+    },
+    "claim": {
+      "aussage": "Nach 18 Uhr keine Kohlenhydrate mehr — sonst wandern sie über Nacht direkt in die Fettdepots.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.9,
+      "begruendung": "Für Fettzunahme zählt die Gesamt-Kalorienbilanz, nicht die Uhrzeit — „KH abends machen dick“ ist als eigenständiger Effekt widerlegt.",
+      "thema": "kohlenhydrate_abends"
+    }
+  },
+  {
+    "id": "youtube:JTLau8e-CUo",
+    "plattform": "youtube",
+    "video_id": "JTLau8e-CUo",
+    "url": "https://www.youtube.com/watch?v=JTLau8e-CUo",
+    "titel": "Krebs durch Süßstoffe?",
+    "kanal": "MAITHINK X",
+    "kanal_id": "UCyHDQ5C6z1NDmJ4g6SerW8g",
+    "kanal_follower": 1520000,
+    "veroeffentlicht": "2026-03-08T05:10:00Z",
+    "views": 611817,
+    "likes": 24166,
+    "kommentare": 2129,
+    "dauer_s": 1584,
+    "thumbnail_url": "https://i.ytimg.com/vi/JTLau8e-CUo/maxresdefault.jpg",
+    "caption": "MEHR MAITHINK X\n► Noch mehr über Süßstoffe in der neuen Folge der Show: https://maithinkx.de/suess\n► Zucker – Lebensnotwendig oder süßes Gift? https://maithinkx.de/zucker\n\n► Alle Folgen MAITHINK X - Die Show: https://maithinkx.de/alle-folgen\n► MAITHINK Xperts Talks: https://maithinkx.de/xperts-talks",
+    "transkript": null,
+    "gefunden_am": "2026-07-01T08:36:25.760Z",
+    "quelle": "claim_suche",
+    "status": "strittig",
+    "skripte": [],
+    "feedback": [],
+    "score": 62,
+    "scores": {
+      "reichweite": 78,
+      "relevanz": 50,
+      "tauglichkeit": 55
+    },
+    "claim": {
+      "aussage": "Süßstoffe können das Darmmikrobiom verändern und darüber die Glukosetoleranz verschlechtern.",
+      "verdict": "strittig",
+      "konfidenz": 0.55,
+      "begruendung": "Einzelstudien zeigen Effekte bei manchen Personen, die Meta-Evidenz ist uneinheitlich — nicht eindeutig widerlegbar, daher konservativ als strittig markiert.",
+      "thema": "suessstoffe"
+    }
+  },
+  {
+    "id": "youtube:ljpm0nhmqcw",
+    "plattform": "youtube",
+    "video_id": "ljpm0nhmqcw",
+    "url": "https://www.youtube.com/watch?v=ljpm0nhmqcw",
+    "titel": "Anzeige Wie viel nehme ich bei einer Saftkur ab? @LiveFresh",
+    "kanal": "Rene Schmock",
+    "kanal_id": "UCol-Re86up3bOE6HRR6ePMQ",
+    "kanal_follower": 565000,
+    "veroeffentlicht": "2024-12-31T16:00:56Z",
+    "views": 185302,
+    "likes": 6791,
+    "kommentare": 0,
+    "dauer_s": 89,
+    "thumbnail_url": "https://i.ytimg.com/vi/ljpm0nhmqcw/maxresdefault.jpg",
+    "caption": "",
+    "transkript": null,
+    "gefunden_am": "2026-06-30T17:36:25.760Z",
+    "quelle": "claim_suche",
+    "status": "abgelehnt",
+    "skripte": [],
+    "feedback": [
+      {
+        "aktion": "abgelehnt",
+        "kommentar": "zu klein — und reine Anzeige, auf bezahlte Werbung reagieren wir nicht",
+        "zeit": "2026-06-30T22:36:25.760Z"
+      }
+    ],
+    "score": 58,
+    "scores": {
+      "reichweite": 60,
+      "relevanz": 68,
+      "tauglichkeit": 35
+    },
+    "claim": {
+      "aussage": "Mit der 7-Tage-Saftkur verlierst du bis zu 5 Kilo — dein Körper entgiftet und verbrennt Fett.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.92,
+      "begruendung": "Der schnelle Gewichtsverlust ist Wasser und Darminhalt durch Crash-Defizit; „Entgiftung“ durch Saft ist physiologisch unbegründet.",
+      "thema": "saftkur"
+    }
+  },
+  {
+    "id": "tiktok:7650492682497690913",
+    "plattform": "tiktok",
+    "video_id": "7650492682497690913",
+    "url": "https://www.tiktok.com/@pamela_rf/video/7650492682497690913",
+    "titel": "Matcha Samples & ich darf entscheiden 🍵",
+    "kanal": "Pamela Reif",
+    "kanal_id": "pamela_rf",
+    "kanal_follower": null,
+    "veroeffentlicht": "2026-06-12T12:59:00.000Z",
+    "views": 147600,
+    "likes": 5378,
+    "kommentare": 34,
+    "dauer_s": 57,
+    "thumbnail_url": null,
+    "caption": "@rioca Matcha Samples & ich darf entscheiden 😱🤓 für mich war die Wahl (fast) eindeutig hihihi 🍵",
+    "transkript": null,
+    "gefunden_am": "2026-06-30T02:36:25.760Z",
+    "quelle": "watchlist",
+    "status": "abgelehnt",
+    "score": 66,
+    "scores": {
+      "reichweite": 70,
+      "relevanz": 58,
+      "tauglichkeit": 74
+    },
+    "claim": {
+      "aussage": "Matcha kurbelt deinen Stoffwechsel an — damit verbrennt dein Körper den ganzen Tag mehr Fett.",
+      "verdict": "klar_falsch",
+      "konfidenz": 0.71,
+      "begruendung": "EGCG/Koffein erhöhen den Energieverbrauch nur minimal (<100 kcal/Tag) — für den Fettabbau praktisch bedeutungslos.",
+      "thema": "abnehmen"
+    },
+    "skripte": [],
+    "feedback": [
+      {
+        "aktion": "abgelehnt",
+        "kommentar": "nicht klar falsch — der Matcha-Effekt existiert, er ist nur winzig",
+        "zeit": "2026-06-30T07:36:25.760Z"
+      }
+    ]
+  }
+]

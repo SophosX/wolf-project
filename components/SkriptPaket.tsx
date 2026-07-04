@@ -7,6 +7,7 @@ import { useState } from "react";
 import { hookLabel } from "@/lib/typen";
 import type { Quelle, Skript, Video } from "@/lib/typen";
 import Markdown from "./Markdown";
+import QuellenPills from "./QuellenPills";
 
 export default function SkriptPaket({ video }: { video: Video }) {
   const [offen, setOffen] = useState(false);
@@ -154,15 +155,7 @@ export default function SkriptPaket({ video }: { video: Video }) {
               {aktiv && aktiv.quellen?.length > 0 && (
                 <div className="quellen">
                   <h4>Quellen</h4>
-                  <ul>
-                    {aktiv.quellen.map((q, i) => (
-                      <li key={i}>
-                        <a href={q.url} target="_blank" rel="noopener noreferrer">
-                          {q.titel}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+                  <QuellenPills quellen={aktiv.quellen} max={10} />
                 </div>
               )}
             </>
@@ -187,15 +180,7 @@ export default function SkriptPaket({ video }: { video: Video }) {
                   {fcErgebnis.quellen.length > 0 && (
                     <div className="quellen" style={{ margin: "12px 0 0" }}>
                       <h4>Quellen (aus Google-Suche belegt)</h4>
-                      <ul>
-                        {fcErgebnis.quellen.map((q, i) => (
-                          <li key={i}>
-                            <a href={q.url} target="_blank" rel="noopener noreferrer">
-                              {q.titel}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
+                      <QuellenPills quellen={fcErgebnis.quellen} max={12} />
                     </div>
                   )}
                 </>

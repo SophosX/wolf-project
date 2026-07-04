@@ -25,3 +25,6 @@ __pycache__/
 *.log
 tsconfig.tsbuildinfo
 daten/.yt_subs_429_cooldown
+
+# Server-Umgebung (VPS) — nie committen
+.env.server

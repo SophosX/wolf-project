@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Die Süßstoffmafia — Fakten statt Panik</title>
+<meta name="description" content="Zwei Projekte gegen Ernährungs-Falschinfos: das Heißhunger-E-Book und Wolf Radar, der Falschinfo-Finder. Ein Testcase für Christian Wolf.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>">
+<!-- ============================================================
+     LOOM-VIDEO: Link hier eintragen, sobald das Video fertig ist.
+     Einfach die URL in href des Buttons mit id="loom" ersetzen.
+     ============================================================ -->
+<style>
+  :root {
+    --schwarz: #141618;
+    --anthrazit: #1d2023;
+    --linie: #2e3236;
+    --gelb: #FFB800;
+    --rot: #FF3339;
+    --text: #f4f4f2;
+    --text-dim: #a8adb2;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--schwarz); color: var(--text);
+    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55; min-height: 100dvh;
+    display: flex; flex-direction: column;
+  }
+  .rahmen { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 22px; }
+
+  /* Kopf */
+  header { padding: 26px 0 0; }
+  .marke {
+    display: inline-flex; align-items: baseline; gap: 10px;
+    font-weight: 800; letter-spacing: 0.16em; font-size: 14px; text-transform: uppercase;
+  }
+  .marke .punkt { color: var(--gelb); }
+
+  /* Hero */
+  .hero { padding: 64px 0 26px; }
+  .hero h1 {
+    font-size: clamp(38px, 7vw, 74px); line-height: 1.02; font-weight: 800;
+    letter-spacing: -0.02em; max-width: 18ch;
+  }
+  .hero h1 em { font-style: normal; color: var(--gelb); }
+  .hero p.lead {
+    margin-top: 22px; font-size: clamp(16px, 2.2vw, 19px); color: var(--text-dim); max-width: 62ch;
+  }
+  .hero p.lead b { color: var(--text); }
+  .loom {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 10px;
+    background: transparent; color: var(--text); text-decoration: none;
+    border: 1.5px solid var(--linie); border-radius: 999px; padding: 12px 22px;
+    font-weight: 600; font-size: 15.5px; transition: border-color .15s, color .15s;
+  }
+  .loom:hover { border-color: var(--gelb); color: var(--gelb); }
+  .loom .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--rot);
+    animation: pulsieren 1.6s ease-in-out infinite;
+  }
+  @keyframes pulsieren { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+
+  /* Projekt-Karten */
+  .projekte {
+    display: grid; grid-template-columns: 1fr; gap: 18px;
+    padding: 34px 0 10px;
+  }
+  @media (min-width: 760px) { .projekte { grid-template-columns: 1fr 1fr; } }
+  .projekt {
+    display: flex; flex-direction: column; gap: 12px;
+    background: var(--anthrazit); border: 1px solid var(--linie); border-radius: 18px;
+    padding: 30px 28px 26px; text-decoration: none; color: var(--text);
+    transition: transform .16s ease, border-color .16s ease;
+  }
+  .projekt:hover { transform: translateY(-3px); border-color: var(--gelb); }
+  .projekt .nummer {
+    font-size: 12.5px; font-weight: 700; letter-spacing: .14em; color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  .projekt .icon { font-size: 42px; line-height: 1; }
+  .projekt h2 { font-size: 26px; letter-spacing: -0.01em; }
+  .projekt p { color: var(--text-dim); font-size: 15.5px; flex: 1; }
+  .projekt .cta {
+    margin-top: 8px; align-self: flex-start;
+    background: var(--gelb); color: #14110a; font-weight: 700; font-size: 15px;
+    border-radius: 999px; padding: 11px 22px;
+  }
+  .projekt:hover .cta { filter: brightness(1.06); }
+  .projekt .meta { font-size: 13px; color: var(--text-dim); }
+
+  /* Fußzeile */
+  footer {
+    margin-top: auto; border-top: 1px solid var(--linie);
+    padding: 22px 0 30px; font-size: 13.5px; color: var(--text-dim);
+  }
+  footer .rahmen { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header class="rahmen">
+  <span class="marke">Die Süßstoffmafia<span class="punkt">.</span></span>
+</header>
+
+<main class="rahmen">
+  <section class="hero">
+    <h1>Fakten statt Panik.<br><em>Wir stellen richtig,</em> was andere falsch erzählen.</h1>
+    <p class="lead">
+      „Süßstoffmafia" — so nennen Angstmacher die, die mit Studien statt Schlagzeilen
+      argumentieren. Den Namen tragen wir mit Stolz. Hier leben zwei Projekte gegen
+      Ernährungs-Falschinformationen: ein <b>E-Book, das Heißhunger wirklich erklärt</b>,
+      und ein <b>Radar, das virale Falschinfos findet</b>, belegt widerlegt und die
+      Richtigstellung gleich mitliefert.
+    </p>
+    <!-- LOOM-PLATZHALTER: href durch die echte Loom-URL ersetzen -->
+    <a class="loom" id="loom" href="#" title="Link folgt — Video ist in Arbeit">
+      <span class="dot"></span> Das Projekt in 5 Minuten — Loom-Video
+    </a>
+  </section>
+
+  <section class="projekte">
+    <a class="projekt" href="buch.pdf" target="_blank" rel="noopener">
+      <span class="nummer">Aufgabe 01 · E-Book</span>
+      <span class="icon">📖</span>
+      <h2>Heißhunger verstehen — und besiegen</h2>
+      <p>
+        47 Seiten, die erklären, warum Willenskraft nicht das Problem ist: das
+        Ratten-Prinzip, der Cheatcode gegen Fressattacken und Strategien, die im
+        Alltag halten. Fundiert, direkt, ohne Verbote.
+      </p>
+      <span class="cta">E-Book lesen (PDF) →</span>
+      <span class="meta">Deutsch · 47 Seiten · kostenlos</span>
+    </a>
+
+    <a class="projekt" href="https://radar.suesstoffmafia.de">
+      <span class="nummer">Aufgabe 02 · Web-App</span>
+      <span class="icon">🐺</span>
+      <h2>Wolf Radar — der Falschinfo-Finder</h2>
+      <p>
+        Durchsucht laufend YouTube, TikTok und Instagram nach reichweitenstarken
+        Ernährungs-Falschinfos, benennt die konkrete Falschaussage, belegt sie per
+        Websuche mit Quellen — und schreibt drei Reaktions-Skripte gleich mit.
+      </p>
+      <span class="cta">Radar öffnen →</span>
+      <span class="meta">Live · aktualisiert sich alle 4 Stunden</span>
+    </a>
+  </section>
+</main>
+
+<footer>
+  <div class="rahmen">
+    <span>Ein Testcase für Christian Wolf · 2026</span>
+    <span>Fragen? <a href="mailto:business@sustinerin.de" style="color:var(--gelb);text-decoration:none">business@sustinerin.de</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

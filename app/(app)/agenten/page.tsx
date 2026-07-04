@@ -36,7 +36,11 @@ export default async function AgentenSeite() {
   for (const r of runs) {
     if (!jeQuelle.has(r.quelle)) jeQuelle.set(r.quelle, r);
   }
-  const fehlerGesamt = runs.reduce((s, r) => s + (r.fehler || []).length, 0);
+  // Gesundheitszustand = Fehler der letzten 24 h (Historie bleibt in der Tabelle einsehbar)
+  const grenze24h = Date.now() - 24 * 3600 * 1000;
+  const fehler24h = runs
+    .filter((r) => new Date(r.zeit).getTime() >= grenze24h)
+    .reduce((s, r) => s + (r.fehler || []).length, 0);
 
   return (
     <>
@@ -49,8 +53,10 @@ export default async function AgentenSeite() {
           <>
             Letzter Lauf {relativeZeit(runs[0].zeit)} · {runs.length} Läufe
             protokolliert ·{" "}
-            <span style={{ color: fehlerGesamt > 0 ? "var(--rot)" : "var(--gruen)" }}>
-              {fehlerGesamt > 0 ? fehlerGesamt + " Fehler insgesamt" : "keine Fehler"}
+            <span style={{ color: fehler24h > 0 ? "var(--rot)" : "var(--gruen)" }}>
+              {fehler24h > 0
+                ? fehler24h + " Fehler in den letzten 24 h"
+                : "keine Fehler in den letzten 24 h"}
             </span>
           </>
         ) : (
@@ -119,9 +125,19 @@ export default async function AgentenSeite() {
                     <td>{r.geflaggt}</td>
                     <td>{r.dauer_s}s</td>
                     <td className="fehler-zelle">
-                      {(r.fehler || []).length === 0
-                        ? "—"
-                        : (r.fehler || []).map((f, j) => <div key={j}>⚠ {f}</div>)}
+                      {(r.fehler || []).length === 0 ? (
+                        "—"
+                      ) : i === 0 ? (
+                        // nur der jüngste Lauf zeigt Fehler direkt — Historie einklappen
+                        (r.fehler || []).map((f, j) => <div key={j}>⚠ {f}</div>)
+                      ) : (
+                        <details>
+                          <summary>⚠ {(r.fehler || []).length} Fehler anzeigen</summary>
+                          {(r.fehler || []).map((f, j) => (
+                            <div key={j}>⚠ {f}</div>
+                          ))}
+                        </details>
+                      )}
                     </td>
                   </tr>
                 ))}

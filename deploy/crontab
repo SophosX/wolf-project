@@ -1,0 +1,7 @@
+# Wolf Radar — Scraper-Zeitplan (Container-TZ = UTC).
+# flock verhindert überlappende Läufe: der 4-h-Job überspringt (-n),
+# der tägliche Instagram-Job wartet blockierend, damit er nie ausfällt.
+0 */4 * * * flock -n /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
+30 5 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur instagram && python3 -u lauf.py --transkribiere'
+# Optional (einkommentieren): yt-dlp/gallery-dl wöchentlich frisch ziehen
+# 0 4 * * 1 pip install -q -U yt-dlp gallery-dl

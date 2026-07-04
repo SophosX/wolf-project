@@ -1,0 +1,282 @@
+[
+ {
+  "zeit": "2026-07-03T20:26:15Z",
+  "quelle": "youtube",
+  "gefunden": 211,
+  "neu": 25,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 62
+ },
+ {
+  "zeit": "2026-07-03T20:27:19Z",
+  "quelle": "tiktok",
+  "gefunden": 90,
+  "neu": 5,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 63
+ },
+ {
+  "zeit": "2026-07-03T20:28:48Z",
+  "quelle": "instagram",
+  "gefunden": 0,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 89
+ },
+ {
+  "zeit": "2026-07-03T21:33:43Z",
+  "quelle": "nachanalyse",
+  "gefunden": 30,
+  "neu": 0,
+  "analysiert": 30,
+  "geflaggt": 15,
+  "fehler": [],
+  "dauer_s": 1062
+ },
+ {
+  "zeit": "2026-07-03T21:59:14Z",
+  "quelle": "rezepte",
+  "gefunden": 68,
+  "neu": 10,
+  "analysiert": 20,
+  "geflaggt": 10,
+  "fehler": [],
+  "dauer_s": 61
+ },
+ {
+  "zeit": "2026-07-03T23:28:22Z",
+  "quelle": "instagram",
+  "gefunden": 60,
+  "neu": 6,
+  "analysiert": 6,
+  "geflaggt": 2,
+  "fehler": [],
+  "dauer_s": 153
+ },
+ {
+  "zeit": "2026-07-03T23:36:50Z",
+  "quelle": "youtube",
+  "gefunden": 210,
+  "neu": 4,
+  "analysiert": 4,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 71
+ },
+ {
+  "zeit": "2026-07-03T23:40:40Z",
+  "quelle": "tiktok",
+  "gefunden": 215,
+  "neu": 4,
+  "analysiert": 4,
+  "geflaggt": 2,
+  "fehler": [],
+  "dauer_s": 229
+ },
+ {
+  "zeit": "2026-07-04T07:38:06Z",
+  "quelle": "youtube",
+  "gefunden": 204,
+  "neu": 17,
+  "analysiert": 17,
+  "geflaggt": 4,
+  "fehler": [],
+  "dauer_s": 558
+ },
+ {
+  "zeit": "2026-07-04T07:40:04Z",
+  "quelle": "tiktok",
+  "gefunden": 214,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 118
+ },
+ {
+  "zeit": "2026-07-04T07:41:56Z",
+  "quelle": "instagram",
+  "gefunden": 60,
+  "neu": 1,
+  "analysiert": 1,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 111
+ },
+ {
+  "zeit": "2026-07-04T07:49:58Z",
+  "quelle": "nachanalyse",
+  "gefunden": 1,
+  "neu": 0,
+  "analysiert": 1,
+  "geflaggt": 1,
+  "fehler": [],
+  "dauer_s": 91
+ },
+ {
+  "zeit": "2026-07-04T08:12:14Z",
+  "quelle": "transkription",
+  "gefunden": 14,
+  "neu": 0,
+  "analysiert": 2,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 55
+ },
+ {
+  "zeit": "2026-07-04T08:15:51Z",
+  "quelle": "transkription",
+  "gefunden": 12,
+  "neu": 0,
+  "analysiert": 1,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 26
+ },
+ {
+  "zeit": "2026-07-04T08:23:58Z",
+  "quelle": "transkription",
+  "gefunden": 11,
+  "neu": 0,
+  "analysiert": 6,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 162
+ },
+ {
+  "zeit": "2026-07-04T08:28:46Z",
+  "quelle": "youtube",
+  "gefunden": 212,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 9
+ },
+ {
+  "zeit": "2026-07-04T08:30:55Z",
+  "quelle": "tiktok",
+  "gefunden": 214,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 128
+ },
+ {
+  "zeit": "2026-07-04T14:02:59Z",
+  "quelle": "neubewertung",
+  "gefunden": 3,
+  "neu": 0,
+  "analysiert": 3,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 119
+ },
+ {
+  "zeit": "2026-07-04T14:32:00Z",
+  "quelle": "neubewertung",
+  "gefunden": 43,
+  "neu": 0,
+  "analysiert": 43,
+  "geflaggt": 2,
+  "fehler": [],
+  "dauer_s": 1420
+ },
+ {
+  "zeit": "2026-07-04T14:52:06Z",
+  "quelle": "neubewertung",
+  "gefunden": 22,
+  "neu": 0,
+  "analysiert": 22,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 473
+ },
+ {
+  "zeit": "2026-07-04T15:13:45Z",
+  "quelle": "neubewertung",
+  "gefunden": 28,
+  "neu": 0,
+  "analysiert": 28,
+  "geflaggt": 7,
+  "fehler": [],
+  "dauer_s": 730
+ },
+ {
+  "zeit": "2026-07-04T16:04:28Z",
+  "quelle": "neubewertung",
+  "gefunden": 14,
+  "neu": 0,
+  "analysiert": 14,
+  "geflaggt": 2,
+  "fehler": [],
+  "dauer_s": 316
+ },
+ {
+  "zeit": "2026-07-04T16:30:25Z",
+  "quelle": "youtube",
+  "gefunden": 241,
+  "neu": 20,
+  "analysiert": 20,
+  "geflaggt": 15,
+  "fehler": [],
+  "dauer_s": 1458
+ },
+ {
+  "zeit": "2026-07-04T16:32:56Z",
+  "quelle": "tiktok",
+  "gefunden": 214,
+  "neu": 3,
+  "analysiert": 3,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 150
+ },
+ {
+  "zeit": "2026-07-04T16:40:37Z",
+  "quelle": "instagram",
+  "gefunden": 123,
+  "neu": 3,
+  "analysiert": 3,
+  "geflaggt": 2,
+  "fehler": [],
+  "dauer_s": 461
+ },
+ {
+  "zeit": "2026-07-04T17:41:35Z",
+  "quelle": "youtube",
+  "gefunden": 241,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 11
+ },
+ {
+  "zeit": "2026-07-04T17:43:35Z",
+  "quelle": "tiktok",
+  "gefunden": 223,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 120
+ },
+ {
+  "zeit": "2026-07-04T17:45:21Z",
+  "quelle": "instagram",
+  "gefunden": 123,
+  "neu": 0,
+  "analysiert": 0,
+  "geflaggt": 0,
+  "fehler": [],
+  "dauer_s": 106
+ }
+]

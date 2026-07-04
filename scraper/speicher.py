@@ -12,9 +12,11 @@ Merge-Semantik (beide Modi identisch):
   status / feedback / skripte / claim / score werden NIE ueberschrieben.
 """
 
+import contextlib
 import json
 import os
 import tempfile
+import time
 from datetime import datetime, timezone
 
 try:
@@ -62,6 +64,42 @@ def _lade_json(pfad, fallback):
     except (json.JSONDecodeError, OSError) as e:
         print("[speicher] WARNUNG: %s nicht lesbar (%s) — starte mit leerem Bestand" % (pfad, e))
         return fallback
+
+
+_VIDEOS_LOCK = os.path.join(DATEN_DIR, ".videos.lock")
+
+
+@contextlib.contextmanager
+def _videos_schreib_lock():
+    """Exklusiver Datei-Lock um Read-Modify-Write von videos.json — gleiche
+    Semantik wie lib/daten.ts (mitLock): App (Node) und Scraper teilen sich im
+    Server-Betrieb dasselbe daten-Volume; ohne Lock kann ein Feedback der App
+    verloren gehen, das zwischen Python-Read und -Write faellt.
+    Nach Timeout laeuft der Schreiber trotzdem weiter (atomare Writes verhindern
+    Korruption) — verwaiste Locks (>10 s) werden geraeumt."""
+    erworben = False
+    for _ in range(25):
+        try:
+            fd = os.open(_VIDEOS_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            erworben = True
+            break
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(_VIDEOS_LOCK) > 10:
+                    os.remove(_VIDEOS_LOCK)
+                    continue
+            except OSError:
+                pass
+            time.sleep(0.12)
+    try:
+        yield
+    finally:
+        if erworben:
+            try:
+                os.remove(_VIDEOS_LOCK)
+            except OSError:
+                pass
 
 
 def _schreibe_json_atomar(pfad, daten):
@@ -171,21 +209,22 @@ def aktualisiere_analyse(videos):
                 print("[speicher] Nachanalyse-PATCH %s fehlgeschlagen: %s" % (v["id"], r.status_code))
         return n
 
-    bestand = _lade_json(VIDEOS_DATEI, [])
-    index = {v.get("id"): v for v in bestand}
-    n = 0
-    for v in videos:
-        ziel = index.get(v.get("id"))
-        if not ziel or ziel.get("status") not in ANALYSE_SCHREIBBAR:
-            continue
-        geaendert = False
-        for f in ANALYSE_FELDER:
-            if v.get(f) is not None:
-                ziel[f] = v[f]
-                geaendert = True
-        if geaendert:
-            n += 1
-    _schreibe_json_atomar(VIDEOS_DATEI, bestand)
+    with _videos_schreib_lock():
+        bestand = _lade_json(VIDEOS_DATEI, [])
+        index = {v.get("id"): v for v in bestand}
+        n = 0
+        for v in videos:
+            ziel = index.get(v.get("id"))
+            if not ziel or ziel.get("status") not in ANALYSE_SCHREIBBAR:
+                continue
+            geaendert = False
+            for f in ANALYSE_FELDER:
+                if v.get(f) is not None:
+                    ziel[f] = v[f]
+                    geaendert = True
+            if geaendert:
+                n += 1
+        _schreibe_json_atomar(VIDEOS_DATEI, bestand)
     return n
 
 
@@ -226,25 +265,26 @@ def speichere_videos(kandidaten):
     if daten_modus() == "supabase":
         return _supabase_speichere_videos(kandidaten)
 
-    bestand = _lade_json(VIDEOS_DATEI, [])
-    index = {}
-    for v in bestand:
-        index[v.get("id")] = v
+    with _videos_schreib_lock():
+        bestand = _lade_json(VIDEOS_DATEI, [])
+        index = {}
+        for v in bestand:
+            index[v.get("id")] = v
 
-    neu, aktualisiert = 0, 0
-    for kand in kandidaten:
-        vid = kand.get("id")
-        if not vid:
-            continue
-        if vid in index:
-            if _merge_video(index[vid], kand):
-                aktualisiert += 1
-        else:
-            bestand.append(kand)
-            index[vid] = kand
-            neu += 1
+        neu, aktualisiert = 0, 0
+        for kand in kandidaten:
+            vid = kand.get("id")
+            if not vid:
+                continue
+            if vid in index:
+                if _merge_video(index[vid], kand):
+                    aktualisiert += 1
+            else:
+                bestand.append(kand)
+                index[vid] = kand
+                neu += 1
 
-    _schreibe_json_atomar(VIDEOS_DATEI, bestand)
+        _schreibe_json_atomar(VIDEOS_DATEI, bestand)
     return neu, aktualisiert
 
 
