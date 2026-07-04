@@ -1,42 +1,83 @@
-// GET /api/agenten → agent_runs + Gesundheits-Zusammenfassung
+// GET  /api/agenten — Live-Status des Scrapers + letzte Läufe + nächster Cron-Lauf.
+//      Wird vom /agenten-Panel gepollt (3 s bei aktivem Lauf, sonst 30 s).
+// POST /api/agenten — "Jetzt suchen": legt die Lauf-Anfrage-Flag an; der
+//      Scraper-Cron prüft sie minütlich und startet youtube+tiktok.
 
 import { NextResponse } from "next/server";
-import { holeAgentRuns } from "@/lib/daten";
+import {
+  fordereLaufAn,
+  holeAgentRuns,
+  holeAgentStatus,
+  laufAngefragt,
+} from "@/lib/daten";
 
 export const dynamic = "force-dynamic";
 
+/** Nächster automatischer Lauf laut deploy/crontab (UTC): alle 4 h zur vollen
+ *  Stunde (0,4,8,…,20) plus täglich 05:30 (Instagram + Transkripte). */
+function naechsterCronLauf(): string {
+  const jetzt = new Date();
+  const kandidaten: Date[] = [];
+  for (let h = 0; h <= 24; h += 4) {
+    const t = new Date(jetzt);
+    t.setUTCHours(h % 24, 0, 0, 0);
+    if (h >= 24) t.setUTCDate(t.getUTCDate() + 1);
+    if (t > jetzt) kandidaten.push(t);
+  }
+  const ig = new Date(jetzt);
+  ig.setUTCHours(5, 30, 0, 0);
+  if (ig <= jetzt) ig.setUTCDate(ig.getUTCDate() + 1);
+  kandidaten.push(ig);
+  kandidaten.sort((a, b) => a.getTime() - b.getTime());
+  return kandidaten[0].toISOString();
+}
+
 export async function GET() {
   try {
-    const runs = await holeAgentRuns();
-
-    // Gesundheit: letzter Lauf je Quelle + Fehlerzähler
-    const quellen: Record<
-      string,
-      { letzter_lauf: string; gefunden: number; geflaggt: number; fehler: number }
-    > = {};
-    for (const run of runs) {
-      if (!quellen[run.quelle]) {
-        quellen[run.quelle] = {
-          letzter_lauf: run.zeit,
-          gefunden: run.gefunden,
-          geflaggt: run.geflaggt,
-          fehler: (run.fehler || []).length,
-        };
-      }
-    }
-
-    const gesundheit = {
-      letzter_lauf: runs[0]?.zeit || null,
-      laeufe_gesamt: runs.length,
-      fehler_gesamt: runs.reduce((s, r) => s + (r.fehler || []).length, 0),
-      quellen,
-    };
-
-    return NextResponse.json({ runs, gesundheit });
+    const [status, runs, angefragt] = await Promise.all([
+      holeAgentStatus(),
+      holeAgentRuns(),
+      laufAngefragt(),
+    ]);
+    return NextResponse.json({
+      status,
+      angefragt,
+      runs: runs.slice(0, 30),
+      naechsterLauf: naechsterCronLauf(),
+    });
   } catch (e) {
-    console.error("[api/agenten]", e);
+    console.error("[api/agenten GET]", e);
     return NextResponse.json(
-      { fehler: e instanceof Error ? e.message : "Unbekannter Fehler" },
+      { status: null, angefragt: false, runs: [], naechsterLauf: null },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST() {
+  try {
+    const [status, angefragt] = await Promise.all([
+      holeAgentStatus(),
+      laufAngefragt(),
+    ]);
+    if (status?.aktiv) {
+      return NextResponse.json(
+        { ok: false, grund: "Der Radar arbeitet bereits." },
+        { status: 409 }
+      );
+    }
+    if (angefragt) {
+      return NextResponse.json(
+        { ok: false, grund: "Ein Lauf ist bereits angefordert." },
+        { status: 409 }
+      );
+    }
+    await fordereLaufAn();
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("[api/agenten POST]", e);
+    return NextResponse.json(
+      { ok: false, grund: "Lauf-Anfrage fehlgeschlagen." },
       { status: 500 }
     );
   }

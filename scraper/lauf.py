@@ -26,10 +26,14 @@ if SCRAPER_DIR not in sys.path:
     sys.path.insert(0, SCRAPER_DIR)
 
 import speicher
+import status
 import youtube_agent
 import tiktok_agent
 import instagram_agent
 from mythen_katalog import finde_themen
+
+# Christian-taugliche Quellen-Namen fuer den Live-Status
+QUELLE_NAME = {"youtube": "YouTube", "tiktok": "TikTok", "instagram": "Instagram"}
 
 WATCHLIST_DATEI = os.path.join(SCRAPER_DIR, "watchlist.json")
 MINDEST_VIEWS = 1000
@@ -341,6 +345,8 @@ def transkribiere_bestand(limit=None):
           % len(offene))
     if not offene:
         return 0
+    status.start("transkription")
+    status.phase("Fehlende Transkripte nachholen (%d Videos) …" % len(offene))
     start, fehler = time.time(), []
 
     # YouTube zuerst über Auto-Untertitel (billig) — im Backfill ohne View-Schwelle,
@@ -383,6 +389,8 @@ def transkribiere_bestand(limit=None):
     })
     for f in fehler:
         print("[transkribiere] FEHLER: %s" % f)
+    status.ende("Transkript-Nachholung fertig: %d von %d Videos ergaenzt"
+                % (erfolgreich, len(offene)))
     return 0
 
 
@@ -418,6 +426,7 @@ def main():
         bestand_ids.add(v.get("id"))
     print("[lauf] Modus=%s, Bestand: %d Videos, Quellen: %s"
           % (speicher.daten_modus(), len(bestand_ids), ", ".join(quellen)))
+    status.start("lauf", quellen)
 
     analysiere_batch, generiere_skripte = (None, None)
     if not args.ohne_analyse:
@@ -460,22 +469,30 @@ def main():
         start = time.time()
         fehler = []
         gefunden, analysiert, geflaggt, neu = 0, 0, 0, 0
+        qname = QUELLE_NAME.get(quelle, quelle)
         try:
+            status.phase("%s durchsuchen …" % qname)
             ergebnis = agenten[quelle]()
             kandidaten = ergebnis["kandidaten"]
             fehler = ergebnis["fehler"]
             gefunden = len(kandidaten)
+            status.zaehler(gefunden=gefunden)
+            status.schritt("%s: %d Videos gesichtet" % (qname, gefunden))
 
             durch, stat = vorfilter(kandidaten, bestand_ids, limit=args.limit)
             print("[lauf] %s: %d gefunden | Vorfilter: %d bekannt, %d <%d Views, "
                   "%d nicht deutsch, %d ohne Thema -> %d neu"
                   % (quelle, gefunden, stat["schon_bekannt"], stat["zu_wenig_views"],
                      MINDEST_VIEWS, stat["nicht_deutsch"], stat["kein_thema"], stat["durch"]))
+            status.schritt("%s: %d relevante neue Kandidaten (Rest: bekannt, "
+                           "zu klein oder kein Ernaehrungsthema)" % (qname, stat["durch"]))
 
             # Transkripte erst NACH dem Vorfilter (spart yt-dlp-Aufrufe).
             # YouTube: erst Auto-Untertitel (billig), dann Audio-Fallback.
             # TikTok/Instagram: direkt Audio-Transkription (Gemini) — die
             # Falschaussage steckt dort im gesprochenen Wort, nicht in der Caption.
+            if durch:
+                status.phase("%s: Transkripte der Videos holen …" % qname)
             if quelle == "youtube" and durch:
                 youtube_agent.hole_transkripte(durch, fehler)
             if durch:
@@ -484,10 +501,16 @@ def main():
                     transkription.transkribiere_kandidaten(durch, fehler)
                 except Exception as e:
                     fehler.append("%s transkription: %s" % (quelle, e))
+            if durch:
+                mit_transkript = sum(1 for k in durch if k.get("transkript"))
+                status.schritt("%s: %d/%d Transkripte liegen vor"
+                               % (qname, mit_transkript, len(durch)))
 
             # Analyse (Gemini) — nur wenn verfuegbar und nicht abgeschaltet
             if durch and analysiere_batch is not None:
                 try:
+                    status.phase("%s: KI prueft %d Videos auf Falschaussagen …"
+                                 % (qname, len(durch)))
                     analysiert = len(durch)
                     analysierte = analysiere_batch(durch)
                     if analysierte is not None:
@@ -499,10 +522,16 @@ def main():
                         durch = analysierte + verworfen_annotiert
                     geflaggte = [k for k in durch if k.get("claim") and k.get("status") in ("inbox", "strittig")]
                     geflaggt = len(geflaggte)
+                    status.zaehler(analysiert=analysiert, geflaggt=geflaggt)
+                    status.schritt("%s: %d Videos analysiert — %d mit Falschaussage geflaggt"
+                                   % (qname, analysiert, geflaggt),
+                                   typ="erfolg" if geflaggt else "info")
                     # Skript-Pakete nur fuer Inbox-Funde (strittige bekommen erst nach Annahme welche)
                     skript_kandidaten = [k for k in geflaggte if k.get("status") == "inbox"]
                     if skript_kandidaten and generiere_skripte is not None:
                         try:
+                            status.phase("%s: Antwort-Skripte fuer %d Funde schreiben …"
+                                         % (qname, len(skript_kandidaten)))
                             generiere_skripte(skript_kandidaten)
                         except Exception as e:
                             fehler.append("%s skripte: %s" % (quelle, e))
@@ -528,6 +557,10 @@ def main():
 
             n, a = speicher.speichere_videos(durch)
             neu, gesamt_neu, gesamt_aktualisiert = n, gesamt_neu + n, gesamt_aktualisiert + a
+            status.zaehler(neu=n)
+            if n:
+                status.schritt("%s: %d neue Videos im Radar gespeichert" % (qname, n),
+                               typ="erfolg")
             for k in durch:
                 bestand_ids.add(k.get("id"))
 
@@ -540,6 +573,7 @@ def main():
         except Exception as e:
             fehler.append("%s: Lauf abgebrochen: %s" % (quelle, e))
             print("[lauf] FEHLER in Quelle %s: %s" % (quelle, e))
+            status.schritt("%s: Quelle uebersprungen (technisches Problem)" % qname)
 
         dauer = int(time.time() - start)
         protokoll = {
@@ -573,6 +607,10 @@ def main():
     print("Gesamt: %d neue Videos, %d Metrik-Updates, Modus=%s"
           % (gesamt_neu, gesamt_aktualisiert, speicher.daten_modus()))
 
+    gesamt_geflaggt = sum(p["geflaggt"] for p in zusammenfassung)
+    status.ende("Lauf abgeschlossen: %d neue Videos, %d mit Falschaussage geflaggt"
+                % (gesamt_neu, gesamt_geflaggt))
+
     # Exit-Code: 0 auch bei Teilfehlern (Protokoll ist geschrieben) —
     # nur wenn GAR NICHTS lief, signalisieren wir Fehler.
     alles_leer = all(p["gefunden"] == 0 for p in zusammenfassung)
@@ -582,4 +620,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Absturz-Schutz: Status nie auf "aktiv" haengen lassen (no-op, wenn
+        # der Lauf regulaer beendet wurde — ende() raeumt _status auf).
+        status.ende("Lauf unerwartet beendet")

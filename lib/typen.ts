@@ -81,6 +81,25 @@ export interface AgentRun {
   dauer_s: number;
 }
 
+/** Live-Status eines Scraper-Laufs (scraper/status.py → daten/agent_status.json) */
+export interface AgentSchritt {
+  zeit: string;
+  text: string;
+  typ: "phase" | "info" | "erfolg";
+}
+
+export interface AgentStatus {
+  aktiv: boolean;
+  modus: string;
+  quellen: string[];
+  gestartet: string;
+  beendet: string | null;
+  phase: string;
+  schritte: AgentSchritt[];
+  zaehler: { gefunden: number; neu: number; analysiert: number; geflaggt: number };
+  ergebnis: string | null;
+}
+
 export interface Einstellungen {
   gelernt: {
     themen_boost: Record<string, number>; // slug → -1..1

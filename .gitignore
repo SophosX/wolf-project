@@ -13,6 +13,7 @@ out/
 # Lokale Daten (Quelle der Wahrheit im Lokal-Modus) — nur Beispiel-Fixtures sind versioniert
 daten/*.json
 daten/.videos.lock
+daten/.lauf_anfrage
 !daten/beispiel/
 
 # Python (Scraper)

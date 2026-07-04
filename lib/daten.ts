@@ -8,6 +8,7 @@ import fsp from "fs/promises";
 import path from "path";
 import type {
   AgentRun,
+  AgentStatus,
   Einstellungen,
   Rezept,
   RezeptFilter,
@@ -227,6 +228,38 @@ export async function holeAgentRuns(): Promise<AgentRun[]> {
   const runs = liesJson<AgentRun[]>("agent_runs.json", []);
   return [...runs].sort(
     (a, b) => new Date(b.zeit).getTime() - new Date(a.zeit).getTime()
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Live-Status + "Jetzt suchen" (nur Lokal-Modus — Status/Flag leben im Volume)
+// ---------------------------------------------------------------------------
+
+const LAUF_ANFRAGE_PFAD = path.join(DATEN_DIR, ".lauf_anfrage");
+/** Läufe, deren Status älter ist, gelten als verwaist (Absturz) — nicht "aktiv" zeigen. */
+const STATUS_STALE_MS = 2 * 3600 * 1000;
+
+/** Live-Status des Scrapers; null wenn noch nie ein Lauf lief (oder Supabase-Modus). */
+export async function holeAgentStatus(): Promise<AgentStatus | null> {
+  if (datenModus() === "supabase") return null;
+  const s = liesJson<AgentStatus | null>("agent_status.json", null);
+  if (!s) return null;
+  if (s.aktiv && Date.now() - new Date(s.gestartet).getTime() > STATUS_STALE_MS) {
+    return { ...s, aktiv: false }; // verwaister Status nach hartem Absturz
+  }
+  return s;
+}
+
+/** Ist ein "Jetzt suchen" angefordert, aber noch nicht gestartet? */
+export async function laufAngefragt(): Promise<boolean> {
+  return fs.existsSync(LAUF_ANFRAGE_PFAD);
+}
+
+/** "Jetzt suchen": Flag-Datei anlegen — der Scraper-Cron prüft sie minütlich. */
+export async function fordereLaufAn(): Promise<void> {
+  await fsp.writeFile(
+    LAUF_ANFRAGE_PFAD,
+    JSON.stringify({ angefragt: new Date().toISOString() })
   );
 }
 

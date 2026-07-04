@@ -3,5 +3,9 @@
 # der tägliche Instagram-Job wartet blockierend, damit er nie ausfällt.
 0 */4 * * * flock -n /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
 30 5 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur instagram && python3 -u lauf.py --transkribiere'
+# "Jetzt suchen" aus der App: /agenten legt daten/.lauf_anfrage an; hier minuetlich
+# geprueft. Flag wird erst NACH Lock-Erhalt geloescht — laeuft gerade ein Lauf,
+# bleibt die Anfrage liegen und startet direkt im Anschluss.
+* * * * * flock -n /tmp/radar.lock sh -c 'if [ -f /app/daten/.lauf_anfrage ]; then rm -f /app/daten/.lauf_anfrage; cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok; fi'
 # Optional (einkommentieren): yt-dlp/gallery-dl wöchentlich frisch ziehen
 # 0 4 * * 1 pip install -q -U yt-dlp gallery-dl
