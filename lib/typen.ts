@@ -173,7 +173,9 @@ export const THEMEN_LABELS: Record<string, string> = {
   saftkur: "Saftkur",
 };
 
-export function themaLabel(slug: string): string {
+export function themaLabel(slug: string | null | undefined): string {
+  // Aussortierte Archiv-Videos haben claim.thema = null
+  if (!slug) return "ohne Thema";
   return THEMEN_LABELS[slug] || slug.replace(/_/g, " ");
 }
 

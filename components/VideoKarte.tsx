@@ -104,9 +104,18 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
             <div className="textteil">
               {video.claim ? (
                 <>
-                  <blockquote className="zitat">„{video.claim.aussage}“</blockquote>
+                  {video.claim.aussage && (
+                    <blockquote className="zitat">„{video.claim.aussage}“</blockquote>
+                  )}
                   <p className="warum">
-                    <b>Warum falsch:</b> {video.claim.begruendung}
+                    <b>
+                      {video.claim.verdict === "klar_falsch"
+                        ? "Warum falsch:"
+                        : video.claim.verdict === "strittig"
+                          ? "Warum strittig:"
+                          : "Einordnung:"}
+                    </b>{" "}
+                    {video.claim.begruendung}
                   </p>
                   {(video.claim.quellen?.length ?? 0) > 0 && (
                     <p className="claim-quellen">
@@ -121,7 +130,9 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
                       ))}
                     </p>
                   )}
-                  <span className="chip"># {themaLabel(video.claim.thema)}</span>
+                  {video.claim.thema && (
+                    <span className="chip"># {themaLabel(video.claim.thema)}</span>
+                  )}
                 </>
               ) : (
                 <p className="warum">
