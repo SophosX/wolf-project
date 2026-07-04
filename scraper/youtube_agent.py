@@ -458,33 +458,58 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
     ziel.sort(key=lambda k: -(k.get("views") or 0))
     ziel = ziel[:max_videos]
 
-    if ziel and _subs_cooldown_aktiv():
-        print("[youtube] Untertitel-Endpunkt im 429-Cooldown — %d Kandidaten gehen "
-              "direkt in den Audio-Fallback" % len(ziel))
-        for offen in ziel:
-            offen["transkript_429"] = True
+    if not ziel:
         return 0
 
     erfolgreich = 0
-    for kand in ziel:
-        text = _transkript_fuer_video(kand["video_id"], fehler)
-        if text == _RATE_LIMIT:
-            # YouTube drosselt den Untertitel-Endpunkt IP-basiert (HTTP 429):
-            # sofort aufhoeren + Cooldown setzen statt weiterzuhaemmern. KEIN
-            # Panel-Fehler — der Audio-Fallback der Transkription uebernimmt,
-            # und 'aussortiert' ohne Material wird ohnehin vertagt (lauf.py).
-            for offen in ziel[ziel.index(kand):]:
-                if not offen.get("transkript"):
-                    offen["transkript_429"] = True
-            _subs_cooldown_setzen()
-            print("[youtube] Transkripte: 429 — restliche %d gehen in den Audio-Fallback, "
-                  "Untertitel pausieren %d min"
-                  % (len(ziel) - ziel.index(kand), SUBS_COOLDOWN_S // 60))
-            break
-        if text:
-            kand["transkript"] = text
-            erfolgreich += 1
-        time.sleep(2)  # rate-schonend
+
+    # Primaer: Apify — EIN Call fuer alle IDs. Umgeht die IP-Bot-Sperre, an der
+    # yt-dlp von der Server-IP mit "Sign in to confirm you're not a bot" scheitert.
+    # Actor liefert Untertitel; ohne Captions greift sein KI-Fallback (Whisper).
+    apify_da = False
+    try:
+        import apify_agent
+        apify_da = apify_agent.verfuegbar()
+        if apify_da:
+            transkripte = apify_agent.hole_youtube_transkripte(
+                [k["video_id"] for k in ziel], fehler,
+                max_zeichen=TRANSKRIPT_MAX_ZEICHEN)
+            for kand in ziel:
+                txt = transkripte.get(kand["video_id"])
+                if txt:
+                    kand["transkript"] = txt
+                    erfolgreich += 1
+            print("[youtube] Transkripte via Apify: %d/%d" % (erfolgreich, len(ziel)))
+    except Exception as e:
+        fehler.append("youtube apify-transkripte: %s" % e)
+
+    # yt-dlp-Untertitel NUR ohne Apify: von der Server-IP scheitert es an der
+    # Bot-Sperre und wuerde nur Fehler-Rauschen erzeugen (Apify ist authoritativ).
+    rest = [] if apify_da else [k for k in ziel if not k.get("transkript")]
+    if rest and _subs_cooldown_aktiv():
+        print("[youtube] Untertitel-Endpunkt im 429-Cooldown — %d Kandidaten gehen "
+              "direkt in den Audio-Fallback" % len(rest))
+        for offen in rest:
+            offen["transkript_429"] = True
+    else:
+        for kand in rest:
+            text = _transkript_fuer_video(kand["video_id"], fehler)
+            if text == _RATE_LIMIT:
+                # YouTube drosselt den Untertitel-Endpunkt IP-basiert (HTTP 429):
+                # sofort aufhoeren + Cooldown setzen. Der Audio-Fallback uebernimmt.
+                for offen in rest[rest.index(kand):]:
+                    if not offen.get("transkript"):
+                        offen["transkript_429"] = True
+                _subs_cooldown_setzen()
+                print("[youtube] Transkripte: 429 — restliche %d gehen in den Audio-Fallback, "
+                      "Untertitel pausieren %d min"
+                      % (len(rest) - rest.index(kand), SUBS_COOLDOWN_S // 60))
+                break
+            if text:
+                kand["transkript"] = text
+                erfolgreich += 1
+            time.sleep(2)  # rate-schonend
+
     print("[youtube] Transkripte: %d/%d erfolgreich (views > %d)"
           % (erfolgreich, len(ziel), min_views))
     return erfolgreich

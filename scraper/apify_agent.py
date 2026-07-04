@@ -23,6 +23,10 @@ def _jetzt_iso():
 
 APIFY_BASIS = "https://api.apify.com/v2"
 IG_ACTOR = os.environ.get("APIFY_IG_ACTOR", "apify~instagram-scraper")
+# YouTube-Transkripte: liefert die Untertitel-Spur, mit Whisper-KI-Fallback fuer
+# caption-lose Videos. Umgeht YouTubes Bot-Sperre gegen die Server-IP (an der
+# yt-dlp scheitert), da Apify ueber eigene Infrastruktur/Proxies laedt.
+YT_ACTOR = os.environ.get("APIFY_YT_ACTOR", "codepoetry~youtube-transcript-ai-scraper")
 TIMEOUT_S = 300
 
 # Discovery: kuratierte grosse DE-Profile jenseits der Watchlist (verifizierte Handles)
@@ -241,3 +245,92 @@ def hole_video_urls(post_urls, fehler):
             break
         time.sleep(5)
     return urls
+
+
+# Miss-Liste: Videos, die Apify (auch mit KI) NICHT transkribieren konnte
+# (Musik-only/Shorts/entfernt). Nach RADAR_YT_MISS_MAX Fehlversuchen nicht mehr
+# anfragen -> verhindert wiederkehrende KI-Kosten im taeglichen Backfill.
+_YT_MISS_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "..", "daten", ".yt_apify_misses.json")
+YT_MISS_MAX = int(os.environ.get("RADAR_YT_MISS_MAX", "2"))
+
+
+def _lade_misses():
+    try:
+        with open(_YT_MISS_DATEI, encoding="utf-8") as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _speichere_misses(misses):
+    try:
+        os.makedirs(os.path.dirname(_YT_MISS_DATEI), exist_ok=True)
+        with open(_YT_MISS_DATEI, "w", encoding="utf-8") as f:
+            json.dump(misses, f)
+    except OSError:
+        pass
+
+
+def hole_youtube_transkripte(video_ids, fehler, sprache="de", max_zeichen=8000):
+    """
+    Transkripte fuer YouTube-Videos ueber Apify holen — EIN Call fuer ALLE IDs.
+    Der Actor liefert YouTubes Untertitel-Spur; fehlen Captions, greift sein
+    KI-Fallback (Whisper). Umgeht die Bot-Sperre, an der yt-dlp von der Server-IP
+    scheitert ("Sign in to confirm you're not a bot").
+    Rueckgabe: {video_id: transkript_text}. Leeres Dict, wenn kein Token/Fehler.
+
+    Kosten-Guards per ENV:
+      RADAR_YT_AI_FALLBACK=0   -> KI-Fallback aus (nur Captions, ~0,0005 $/Video)
+      RADAR_YT_AI_MINUTEN      -> harte Obergrenze KI-Minuten pro Lauf (Default 60)
+      RADAR_YT_AI_SKIP_MIN     -> KI fuer Videos laenger als N Min ueberspringen (Default 60)
+      RADAR_YT_MISS_MAX        -> nach N Fehlversuchen Video nicht mehr anfragen (Default 2)
+    """
+    alle = [v for v in dict.fromkeys(video_ids or []) if v]  # dedupe, Reihenfolge erhalten
+    if not alle or not verfuegbar():
+        return {}
+    # Dauer-Nieten aussparen (spart wiederkehrende KI-Kosten im Backfill)
+    misses = _lade_misses()
+    ids = [v for v in alle if int(misses.get(v, 0)) < YT_MISS_MAX]
+    if not ids:
+        return {}
+    ai_an = (os.environ.get("RADAR_YT_AI_FALLBACK", "1").strip() or "1") != "0"
+    eingabe = {
+        "startUrls": [{"url": "https://www.youtube.com/watch?v=%s" % v} for v in ids],
+        "languages": [sprache],
+        "enableAiFallback": ai_an,
+        "forceWhisperLanguage": sprache,
+        "outputFormats": ["text"],
+        "subType": "both",
+        "maxResults": len(ids),
+        "maxAiMinutes": int(os.environ.get("RADAR_YT_AI_MINUTEN", "60")),
+        "skipAiFallbackIfLongerThan": int(os.environ.get("RADAR_YT_AI_SKIP_MIN", "60")),
+    }
+    try:
+        items = _run_sync(YT_ACTOR, eingabe)
+    except Exception as e:
+        fehler.append("apify youtube transkripte: %s" % e)
+        return {}
+    ergebnis = {}
+    for it in items or []:
+        try:
+            md = it.get("metadata") or {}
+            vid = md.get("id") or it.get("video_id") or it.get("id")
+            txt = (it.get("transcript_text") or it.get("transcript_llm") or "").strip()
+            if vid and txt:
+                ergebnis[vid] = txt[:max_zeichen]
+        except Exception as e:
+            fehler.append("apify youtube transkript item: %s" % e)
+    # Miss-Zaehler pflegen: Treffer loeschen, Nieten hochzaehlen
+    geaendert = False
+    for v in ids:
+        if v in ergebnis:
+            if misses.pop(v, None) is not None:
+                geaendert = True
+        else:
+            misses[v] = int(misses.get(v, 0)) + 1
+            geaendert = True
+    if geaendert:
+        _speichere_misses(misses)
+    return ergebnis

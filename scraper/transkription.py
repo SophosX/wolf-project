@@ -304,10 +304,25 @@ def _audio_beschaffen(kandidat, tmp, fehler, kontext):
     return _audio_via_ytdlp(kandidat.get("url"), tmp, fehler, kontext, plattform)
 
 
+def _apify_verfuegbar():
+    """Ist die Apify-Anbindung (Token) aktiv? YouTube-Transkripte laufen dann
+    authoritativ ueber Apify — der yt-dlp-Audio-Fallback fuer YouTube entfaellt
+    (er scheitert von der Server-IP ohnehin an der Bot-Sperre)."""
+    try:
+        import apify_agent
+        return apify_agent.verfuegbar()
+    except Exception:
+        return False
+
+
 def _ist_transkriptions_kandidat(k, min_views_kurz, min_views_yt):
     if k.get("transkript"):
         return False
     if not k.get("url"):
+        return False
+    # YouTube-Audio-Fallback ueberspringen, wenn Apify die Transkripte liefert:
+    # yt-dlp-Download scheitert von der Server-IP + wuerde nur Fehler erzeugen.
+    if k.get("plattform") == "youtube" and _apify_verfuegbar():
         return False
     views = k.get("views") or 0
     if k.get("plattform") == "instagram":
