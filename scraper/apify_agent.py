@@ -111,6 +111,9 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
                 "thumbnail_url": it.get("displayUrl"),
                 "caption": caption[:3000],
                 "transkript": None,
+                # transient (wird vor dem Speichern entfernt): kurzlebige CDN-URL
+                # des Reels — Beschaffungsweg für die Audio-Transkription
+                "apify_video_url": _video_url_aus_item(it),
                 "gefunden_am": _jetzt_iso(),
                 "quelle": "watchlist",
                 "status": "inbox",
@@ -130,3 +133,45 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
             fehler.append("apify instagram @%s (%s): 0 Posts geliefert — Handle pruefen" % (handle, name))
 
     return {"kandidaten": kandidaten, "fehler": fehler}
+
+
+def _video_url_aus_item(it):
+    """videoUrl eines Apify-Items — bei Sidecar-Posts (Carousel) aus dem ersten
+    Video-Kind. None, wenn der Post schlicht kein Video ist (reines Foto)."""
+    if it.get("videoUrl"):
+        return it["videoUrl"]
+    for kind in it.get("childPosts") or []:
+        if kind.get("videoUrl"):
+            return kind["videoUrl"]
+    return None
+
+
+def hole_video_urls(post_urls, fehler):
+    """
+    Für bestehende Instagram-Posts frische CDN-Video-URLs nachladen (Backfill der
+    Audio-Transkription: die beim Fund gelieferte URL ist längst abgelaufen).
+    Rückgabe: {shortcode: videoUrl} — Posts ohne Video fehlen bewusst.
+    """
+    if not post_urls or not verfuegbar():
+        return {}
+    urls = {}
+    for versuch in (1, 2):  # Apify liefert nach Kaltstart vereinzelt leer — einmal wiederholen
+        try:
+            items = _run_sync(IG_ACTOR, {
+                "directUrls": list(post_urls),
+                "resultsType": "posts",
+                "resultsLimit": 1,
+            })
+        except Exception as e:
+            if versuch == 2:
+                fehler.append("apify instagram video-urls: %s" % e)
+            continue
+        for it in items or []:
+            kurz = it.get("shortCode") or it.get("shortcode")
+            url = _video_url_aus_item(it)
+            if kurz and url:
+                urls[kurz] = url
+        if urls or items:
+            break
+        time.sleep(5)
+    return urls

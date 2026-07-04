@@ -55,7 +55,9 @@ wolf-radar/                  # = GitHub-Repo, Next.js-App im Root
     "verdict": "klar_falsch",           // klar_falsch | strittig | korrekt (korrekt wird gar nicht gespeichert)
     "konfidenz": 0.93,
     "begruendung": "Ein Satz, warum falsch.",
-    "thema": "suessstoffe"              // slug aus mythen_katalog.THEMEN
+    "thema": "suessstoffe",             // slug aus mythen_katalog.THEMEN
+    "websuche": "bestaetigt_falsch"     // Stufe C+ (google_search): bestaetigt_falsch | stark_irrefuehrend |
+                                        // nuanciert | korrekt | unklar | fehlgeschlagen | null (nicht gelaufen)
   },
   "skripte": [ { "variante": 1, "hook_typ": "o_ton_konter", "inhalt_md": "…", "quellen": [{"titel": "…", "url": "…"}] } ],
   "feedback": [ { "aktion": "abgelehnt", "kommentar": "zu klein", "zeit": "…" } ]

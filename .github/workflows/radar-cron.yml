@@ -67,6 +67,13 @@ jobs:
         # beendet nur mit Exit 1, wenn ueberhaupt nichts gefunden wurde.
         run: python scraper/lauf.py --nur "${{ steps.quellen.outputs.nur }}"
 
+      - name: Transkript-Backfill (nur taeglicher Lauf)
+        # Neue Kandidaten werden im Radar-Lauf direkt transkribiert; dieser
+        # Backfill holt 1x taeglich Nachzuegler nach (z.B. YouTube-429-Faelle,
+        # Instagram-Posts, deren CDN-URL beim Fund schon abgelaufen war).
+        if: github.event.schedule == '30 5 * * *' || github.event_name == 'workflow_dispatch'
+        run: python scraper/lauf.py --transkribiere
+
       - name: Notfall-Protokoll bei hartem Absturz
         # Greift nur, wenn lauf.py selbst gecrasht ist (z.B. SyntaxError,
         # Netz komplett weg) und daher KEIN agent_run schreiben konnte.

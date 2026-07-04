@@ -18,6 +18,8 @@ export interface Claim {
   konfidenz: number; // 0..1
   begruendung: string; // Ein Satz, warum falsch
   thema: string; // Slug aus mythen_katalog.THEMEN
+  // Ergebnis der Websuche-Verifikation (Stufe C+); null/fehlend = nicht gelaufen
+  websuche?: string | null;
 }
 
 export interface Quelle {

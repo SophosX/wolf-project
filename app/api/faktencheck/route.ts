@@ -6,7 +6,8 @@ import { holeVideo } from "@/lib/daten";
 import { faktencheck } from "@/lib/gemini";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+// Mehrstufiger Check (Behauptungen parallel, je mit Websuche) braucht Luft
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {

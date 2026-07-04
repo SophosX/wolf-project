@@ -22,6 +22,7 @@ import logging
 import math
 import os
 import random
+import re
 import time
 import urllib.error
 import urllib.request
@@ -566,6 +567,124 @@ def _stufe_c(video, aussage, positions_tabelle):
 
 
 # ---------------------------------------------------------------------------
+# Stufe C+: Websuche-Verifikation (google_search-Grounding)
+#
+# Warum: Stufe C urteilt aus Modellwissen — ohne Websuche. Das hätte beinahe
+# einen False-Flag produziert (EFSA-Neubewertung 02/2026, Status-Log 10).
+# Deshalb wird JEDER prospektive Inbox-Fund (klar_falsch) vor der Inbox mit
+# aktueller Websuche gegengeprüft; ereignisabhängige Fälle (Aktualitäts-Regel)
+# werden hier aufgelöst statt pauschal vertagt. Konservative Richtung:
+# Websuche kann Funde bestätigen, abschwächen oder kippen — ein Websuche-
+# FEHLER ändert nichts (dann gilt das konservative Stufe-C-Urteil).
+# ---------------------------------------------------------------------------
+
+WEBCHECK_AKTIV = (os.environ.get("RADAR_WEBCHECK", "1").strip() or "1") != "0"
+INBOX_KONFIDENZ = 0.75  # Schwelle klar_falsch -> inbox (Kontrakt)
+
+_WEBCHECK_SYSTEM = """Du bist ein präziser, wissenschaftlich arbeitender Faktenchecker mit
+Spezialisierung auf Ernährung, Fitness und Gesundheit. Prüfe die übergebene Aussage GRÜNDLICH
+mit der Google-Suche, bevor du urteilst — verlasse dich nicht auf dein internes Wissen.
+Suche gezielt nach seriösen Quellen: EFSA, DGE, BfR, WHO, Cochrane, Metaanalysen,
+Fachgesellschaften. Bei ereignisbezogenen Aussagen (neue Studie, Behörden-Meldung, News):
+prüfe zuerst, ob das Ereignis real ist und was die Originalquelle wirklich sagt.
+
+BEWERTUNG (streng konservativ — im Zweifel die mildere Kategorie):
+- bestaetigt_falsch : die Aussage ist wissenschaftlich eindeutig widerlegt
+- stark_irrefuehrend: technisch nicht komplett falsch, aber die Botschaft führt klar in die Irre
+- nuanciert         : Evidenz gemischt/kontextabhängig ('kann sein, muss aber nicht')
+- korrekt           : wissenschaftlich haltbar
+- unklar            : per Suche nicht sauber zu klären
+
+Antworte EXAKT in diesem Format (zwei Zeilen, deutsch, keine weiteren Zeilen):
+URTEIL: bestaetigt_falsch | stark_irrefuehrend | nuanciert | korrekt | unklar
+BEGRUENDUNG: <genau ein Satz mit dem entscheidenden Fakt (Zahl/Quelle), der das Urteil trägt>"""
+
+_WEBCHECK_URTEILE = ("bestaetigt_falsch", "stark_irrefuehrend", "nuanciert", "korrekt", "unklar")
+_WEBCHECK_URTEIL_RE = re.compile(r"URTEIL\s*:\s*\**\s*([a-z_]+)", re.IGNORECASE)
+_WEBCHECK_GRUND_RE = re.compile(r"BEGRUENDUNG\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
+
+
+def _stufe_c_websuche(video, aussage):
+    """Grounded Gegencheck. Rückgabe {urteil, begruendung} oder None bei Fehlern."""
+    prompt = (
+        "VIDEO-KONTEXT:\n" + _video_kontext(video) +
+        "\n\nZU PRÜFENDE AUSSAGE:\n\"" + str(aussage) + "\"\n\n"
+        "Recherchiere mit der Google-Suche und antworte im vorgegebenen Zwei-Zeilen-Format."
+    )
+    try:
+        antwort = gemini_anfrage(prompt, system=_WEBCHECK_SYSTEM,
+                                 tools=[{"google_search": {}}], temperatur=0.1,
+                                 modell=GEMINI_MODELL_QUALITAET)
+        text = extrahiere_antwort_text(antwort)
+    except Exception as fehler:
+        logger.warning("Stufe C+ (Websuche) fehlgeschlagen für %s: %s — Stufe-C-Urteil bleibt.",
+                       video.get("id"), fehler)
+        return None
+    urteil_treffer = _WEBCHECK_URTEIL_RE.search(text)
+    urteil = (urteil_treffer.group(1).lower() if urteil_treffer else "")
+    if urteil not in _WEBCHECK_URTEILE:
+        logger.warning("Stufe C+ unparsebar für %s (%r) — Stufe-C-Urteil bleibt.",
+                       video.get("id"), text[:120])
+        return None
+    grund_treffer = _WEBCHECK_GRUND_RE.search(text)
+    begruendung = " ".join((grund_treffer.group(1) if grund_treffer else "").split())[:400]
+    return {"urteil": urteil, "begruendung": begruendung}
+
+
+def _stufe_c_plus_anwenden(video, aussage, verdict_daten):
+    """Websuche-Verifikation auf ein Stufe-C-Ergebnis anwenden (mutiert verdict_daten).
+
+    Läuft nur für (a) prospektive Inbox-Funde (klar_falsch, Konfidenz über Schwelle)
+    und (b) ereignisabhängige Fälle, die das Aktualitäts-Netz auf strittig gesetzt hat.
+    """
+    if not WEBCHECK_AKTIV:
+        return verdict_daten
+    verdict = verdict_daten.get("verdict")
+    konfidenz = verdict_daten.get("konfidenz", 0.0)
+    aktualitaet = bool(verdict_daten.get("aktualitaetsabhaengig"))
+    braucht_check = ((verdict == "klar_falsch" and konfidenz >= INBOX_KONFIDENZ)
+                     or (aktualitaet and verdict != "korrekt"))
+    if not braucht_check:
+        return verdict_daten
+
+    ergebnis = _stufe_c_websuche(video, aussage)
+    time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+    if ergebnis is None:
+        verdict_daten["websuche"] = "fehlgeschlagen"
+        return verdict_daten
+
+    urteil, grund = ergebnis["urteil"], ergebnis["begruendung"]
+    verdict_daten["websuche"] = urteil
+    logger.info("Stufe C+ %s: %s → %s — %s", video.get("id"), verdict, urteil, grund)
+
+    if urteil == "bestaetigt_falsch":
+        verdict_daten["verdict"] = "klar_falsch"
+        verdict_daten["konfidenz"] = max(konfidenz, 0.85)
+        if grund:
+            verdict_daten["begruendung"] = grund + " (per Websuche bestätigt)"
+    elif urteil == "stark_irrefuehrend":
+        # Nach Chris' Faktenchecker-Briefing reaktionswürdig — aber mit moderater Konfidenz
+        verdict_daten["verdict"] = "klar_falsch"
+        verdict_daten["konfidenz"] = max(INBOX_KONFIDENZ + 0.03,
+                                         min(konfidenz, 0.85)) if konfidenz else 0.78
+        verdict_daten["begruendung"] = ("[Websuche: stark irreführend] "
+                                        + (grund or verdict_daten.get("begruendung", "")))
+    elif urteil == "nuanciert":
+        verdict_daten["verdict"] = "strittig"
+        verdict_daten["begruendung"] = ("[Websuche: Evidenz nuanciert] "
+                                        + (grund or verdict_daten.get("begruendung", "")))
+    elif urteil == "korrekt":
+        verdict_daten["verdict"] = "korrekt"
+        if grund:
+            verdict_daten["begruendung"] = grund + " (per Websuche geprüft)"
+    else:  # unklar — konservativ: nicht in die Inbox
+        verdict_daten["verdict"] = "strittig"
+        verdict_daten["begruendung"] = ("[Websuche ohne klares Ergebnis] "
+                                        + (grund or verdict_daten.get("begruendung", "")))
+    return verdict_daten
+
+
+# ---------------------------------------------------------------------------
 # Stufe D: Scoring — deterministisch nach Kontrakt-Formel
 # ---------------------------------------------------------------------------
 
@@ -768,6 +887,9 @@ def analysiere_batch(kandidaten, gelernt):
             continue
         time.sleep(PAUSE_ZWISCHEN_CALLS_S)
 
+        # Stufe C+: prospektive Inbox-Funde + ereignisabhängige Fälle per Websuche verifizieren
+        verdict_daten = _stufe_c_plus_anwenden(video, aussage, verdict_daten)
+
         verdict = verdict_daten["verdict"]
         konfidenz = verdict_daten["konfidenz"]
         if verdict == "korrekt":
@@ -802,6 +924,8 @@ def analysiere_batch(kandidaten, gelernt):
             "konfidenz": round(konfidenz, 2),
             "begruendung": verdict_daten["begruendung"],
             "thema": thema,
+            # Transparenz: Ergebnis der Websuche-Verifikation (Stufe C+), falls gelaufen
+            "websuche": verdict_daten.get("websuche"),
         }
         ergebnis_liste.append(angereichert)
         logger.info("Behalten %s: %s (%.2f) → status=%s score=%d thema=%s",

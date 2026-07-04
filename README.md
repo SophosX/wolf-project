@@ -20,9 +20,23 @@ oder eine beliebige URL mit `?code=radar` öffnen.
 | Variable | Zweck |
 |---|---|
 | `RADAR_ZUGANGSCODE` | App-Zugang (Default `radar`) |
-| `GEMINI_API_KEY` | Skript-Generierung + Faktencheck (gemini-2.5-flash, Search-Grounding) |
+| `GEMINI_API_KEY` | Analyse, Skripte, Faktencheck, Audio-Transkription |
+| `RADAR_MODELL_QUALITAET` | Modell für Verdict/Faktencheck/Skripte (Default `gemini-2.5-pro`) |
+| `RADAR_MODELL_SCHNELL` | Modell für Vorfilter/Extraktion (Default `gemini-2.5-flash`) |
+| `RADAR_WEBCHECK` | `0` schaltet die Websuche-Verifikation (Stufe C+) ab (Default an) |
+| `RADAR_AUDIO_MAX` | Audio-Transkriptionen pro Lauf (Default 12) |
 | `DATEN_MODUS` | `lokal` (Default) oder `supabase` |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | nur im Supabase-Modus (Server-only!) |
+
+## Transkription (alle Plattformen)
+
+Neue Kandidaten werden im Lauf direkt transkribiert, damit Analyse & Faktencheck mit dem
+**gesprochenen Wort** arbeiten (bei TikTok/Reels steht die Falschaussage selten in der Caption):
+YouTube über Auto-Untertitel (Audio-Fallback bei 429/fehlenden Subs), TikTok über das
+yt-dlp-`download`-Format, Instagram über die CDN-URL aus dem Apify-Item — jeweils
+ffmpeg → Mono-MP3 → Gemini-Audio-Transkription. Backfill für Bestandsvideos:
+`python3 scraper/lauf.py --transkribiere`. Ohne Sprache (Musik-Shorts) bleibt das
+Transkript bewusst leer.
 
 ## Scraper-Haertung: Instagram-Session-Cookie (optional) & TikTok-Discovery
 

@@ -213,6 +213,65 @@ def nachanalyse(limit=None):
     return 0
 
 
+def transkribiere_bestand(limit=None):
+    """Backfill: bestehende Videos ohne Transkript nachtranskribieren (alle Plattformen).
+    Instagram: frische CDN-URLs via Apify nachladen (die alten sind abgelaufen)."""
+    try:
+        import transkription
+    except ImportError as e:
+        print("[transkribiere] transkription.py nicht ladbar: %s" % e)
+        return 1
+    offene = speicher.lade_ohne_transkript()
+    offene.sort(key=lambda v: -(v.get("views") or 0))
+    print("[transkribiere] %d Videos ohne Transkript (inbox/strittig/angenommen/gespeichert)"
+          % len(offene))
+    if not offene:
+        return 0
+    start, fehler = time.time(), []
+
+    # YouTube zuerst über Auto-Untertitel (billig) — im Backfill ohne View-Schwelle,
+    # es geht ja gerade um Videos, mit denen Chris arbeitet
+    erfolgreich = 0
+    yt_offene = [v for v in offene if v.get("plattform") == "youtube"]
+    if yt_offene:
+        erfolgreich += youtube_agent.hole_transkripte(yt_offene, fehler, min_views=0,
+                                                      max_videos=min(len(yt_offene), 25))
+
+    ig_posts = [v for v in offene if v.get("plattform") == "instagram" and v.get("url")]
+    if ig_posts:
+        try:
+            import apify_agent
+            if apify_agent.verfuegbar():
+                urls = apify_agent.hole_video_urls([v["url"] for v in ig_posts], fehler)
+                for v in ig_posts:
+                    if v.get("video_id") in urls:
+                        v["apify_video_url"] = urls[v["video_id"]]
+                print("[transkribiere] Instagram: %d/%d frische CDN-URLs via Apify"
+                      % (len(urls), len(ig_posts)))
+        except ImportError:
+            pass
+
+    # Audio-Transkription für den Rest — im Backfill mit niedriger View-Schwelle
+    # (das sind Chris' Arbeits-Videos, die Materialbasis soll vollständig werden)
+    erfolgreich += transkription.transkribiere_kandidaten(
+        offene, fehler, max_videos=limit, min_views_kurz=1000, min_views_yt=1000)
+    transkribierte = [v for v in offene if v.get("transkript")]
+    for v in transkribierte:
+        v.pop("apify_video_url", None)
+    if transkribierte:
+        _, aktualisiert = speicher.speichere_videos(transkribierte)
+        print("[transkribiere] %d Transkripte gespeichert" % aktualisiert)
+
+    speicher.speichere_agent_run({
+        "zeit": speicher.jetzt_iso(), "quelle": "transkription",
+        "gefunden": len(offene), "neu": 0, "analysiert": erfolgreich,
+        "geflaggt": 0, "fehler": fehler, "dauer_s": int(time.time() - start),
+    })
+    for f in fehler:
+        print("[transkribiere] FEHLER: %s" % f)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Wolf Radar — Scraper-Lauf")
     parser.add_argument("--nur", default="youtube,tiktok,instagram",
@@ -223,10 +282,14 @@ def main():
                         help="Max. neue Kandidaten pro Quelle (nach Vorfilter)")
     parser.add_argument("--nachanalyse", action="store_true",
                         help="Nur bestehende unanalysierte Videos (claim=null) analysieren, kein Scraping")
+    parser.add_argument("--transkribiere", action="store_true",
+                        help="Backfill: bestehende Videos ohne Transkript nachtranskribieren, kein Scraping")
     args = parser.parse_args()
 
     if args.nachanalyse:
         return nachanalyse(limit=args.limit)
+    if args.transkribiere:
+        return transkribiere_bestand(limit=args.limit)
 
     quellen = [q.strip() for q in args.nur.split(",") if q.strip()]
     watchlist = lade_watchlist()
@@ -284,9 +347,18 @@ def main():
                   % (quelle, gefunden, stat["schon_bekannt"], stat["zu_wenig_views"],
                      MINDEST_VIEWS, stat["nicht_deutsch"], stat["kein_thema"], stat["durch"]))
 
-            # Transkripte erst NACH dem Vorfilter (spart yt-dlp-Aufrufe)
+            # Transkripte erst NACH dem Vorfilter (spart yt-dlp-Aufrufe).
+            # YouTube: erst Auto-Untertitel (billig), dann Audio-Fallback.
+            # TikTok/Instagram: direkt Audio-Transkription (Gemini) — die
+            # Falschaussage steckt dort im gesprochenen Wort, nicht in der Caption.
             if quelle == "youtube" and durch:
                 youtube_agent.hole_transkripte(durch, fehler)
+            if durch:
+                try:
+                    import transkription
+                    transkription.transkribiere_kandidaten(durch, fehler)
+                except Exception as e:
+                    fehler.append("%s transkription: %s" % (quelle, e))
 
             # Analyse (Gemini) — nur wenn verfuegbar und nicht abgeschaltet
             if durch and analysiere_batch is not None:
@@ -318,6 +390,7 @@ def main():
             # Lauf holt das Transkript nach und urteilt mit vollem Material.
             vertagt_ids = set()
             for k in durch:
+                k.pop("apify_video_url", None)  # transient: kurzlebige CDN-URL nie speichern
                 war_429 = k.pop("transkript_429", False)
                 if war_429 and (k.get("claim") or {}).get("verdict") == "aussortiert":
                     vertagt_ids.add(k.get("id"))

@@ -85,6 +85,20 @@ def lade_videos():
     return _lade_json(VIDEOS_DATEI, [])
 
 
+def lade_ohne_transkript(status_liste=("inbox", "strittig", "angenommen", "gespeichert")):
+    """Videos ohne Transkript (fuer den Transkriptions-Backfill) vollstaendig laden.
+    Default: nur Videos, mit denen Chris arbeitet (kein Archiv-Ballast)."""
+    if daten_modus() == "supabase":
+        zeilen = _supabase_get("videos", {
+            "select": "*",
+            "transkript": "is.null",
+            "status": "in.(%s)" % ",".join(status_liste),
+        })
+        return zeilen or []
+    return [v for v in _lade_json(VIDEOS_DATEI, [])
+            if not v.get("transkript") and v.get("status") in status_liste]
+
+
 def lade_unanalysierte():
     """Videos ohne Analyse (claim=null, status=inbox) vollstaendig laden — fuer --nachanalyse."""
     if daten_modus() == "supabase":
