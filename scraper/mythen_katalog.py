@@ -28,6 +28,7 @@ THEMEN = {
             "süßstoff", "suessstoff", "aspartam", "sucralose", "stevia",
             "zuckerersatz", "cola zero", "cola light", "light getränk",
             "erythrit", "xylit", "zerup", "künstliche süße", "süßungsmittel",
+            "darmflora",
         ],
     },
     "kaloriendefizit": {
@@ -46,6 +47,7 @@ THEMEN = {
             "stoffwechsel ankurbeln", "stoffwechsel anregen", "stoffwechsel kaputt",
             "stoffwechsel eingeschlafen", "stoffwechsel boost", "fettverbrennung ankurbeln",
             "hungerstoffwechsel", "stoffwechsel trick", "metabolismus",
+            "cortisol", "stoffwechseltyp", "hormone blockieren", "hormonbalance",
         ],
     },
     "fruehstuecksmythos": {
@@ -73,6 +75,7 @@ THEMEN = {
             "honig gesünder", "honig statt zucker", "datteln statt zucker",
             "dattelsüße", "kokosblütenzucker", "agavendicksaft", "natürlicher zucker",
             "zucker ist gift", "zucker droge", "zuckerfrei challenge", "raffinierter zucker",
+            "fruktose", "fructose", "obst macht dick",
         ],
     },
     "detox_kuren": {
@@ -91,6 +94,7 @@ THEMEN = {
             "protein niere", "eiweiß niere", "protein schädlich", "eiweiß schädlich",
             "zu viel protein", "zu viel eiweiß", "proteinshake ungesund",
             "eiweißshake ungesund", "protein gefährlich", "kreatinin",
+            "kreatin schädlich", "kreatin niere",
         ],
     },
     "protein_allgemein": {
@@ -109,6 +113,7 @@ THEMEN = {
             "apfelessig abnehmen", "zitronenwasser abnehmen", "ingwer shot abnehmen",
             "abnehmtropfen", "abnehmtee", "glucomannan", "kohlenhydratblocker",
             "fettkiller", "schnell abnehmen ohne",
+            "superfood", "abnehmen im schlaf", "blähbauch", "zitronenwasser",
         ],
     },
     "crash_diaeten": {
@@ -135,6 +140,8 @@ THEMEN = {
             "clean eating", "chemie im essen", "e-nummern", "zusatzstoffe gefährlich",
             "zutatenliste", "hochverarbeitet", "ultra processed", "industriezucker",
             "nichts essen was", "künstliche zusatzstoffe", "aussprechen kannst",
+            "samenöl", "seed oil", "rapsöl", "sonnenblumenöl", "mikrowelle",
+            "milch ungesund", "milch entzünd", "entzündungsfördernd",
         ],
     },
     "light_produkte": {
@@ -159,6 +166,7 @@ THEMEN = {
         "keywords": [
             "vollkorn gesünder", "weißmehl ungesund", "weizen gift", "gluten ungesund",
             "brot macht dick", "gute kohlenhydrate", "böse lebensmittel",
+            "cholesterin", "eier ungesund",
         ],
     },
     "training_fettabbau_mythen": {
@@ -176,6 +184,7 @@ THEMEN = {
         "kerngewicht": 0.6,
         "keywords": [
             "abnehmspritze", "ozempic", "wegovy", "semaglutid", "glp-1", "glp1",
+            "berberin", "natürliches ozempic",
         ],
     },
     "mahlzeiten_regeln": {
@@ -229,6 +238,22 @@ SUCHQUERIES = [
     "Bauchfett gezielt verbrennen Übungen",
     "Light Produkte machen dick",
     "E-Nummern Zusatzstoffe gefährlich",
+    # Erweiterung 2026-07-04: mehr Claim-Muster aus Chris' Themenwelt + aktuelle Trends
+    "Saftkur 7 Tage Erfahrung entgiften",
+    "Zitronenwasser morgens abnehmen Trick",
+    "Cortisol senken Bauchfett verlieren",
+    "Hormone blockieren Abnehmen Frauen",
+    "Insulin Trick Fett verbrennen",
+    "natürliches Ozempic Berberin abnehmen",
+    "Eier Cholesterin gefährlich Herz",
+    "Milch ungesund entzündungsfördernd",
+    "Samenöle giftig entzündlich Wahrheit",
+    "Fruktose Obst macht dick Leber",
+    "Mikrowelle zerstört Nährstoffe",
+    "Kreatin schädlich Nieren",
+    "Süßstoffe zerstören Darmflora",
+    "Stoffwechseltyp Test abnehmen",
+    "Abnehmen im Schlaf Trick funktioniert",
 ]
 
 

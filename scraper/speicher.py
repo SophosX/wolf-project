@@ -99,6 +99,42 @@ def lade_ohne_transkript(status_liste=("inbox", "strittig", "angenommen", "gespe
             if not v.get("transkript") and v.get("status") in status_liste]
 
 
+VORSCHLAEGE_DATEI = os.path.join(DATEN_DIR, "vorschlaege.json")
+
+
+def lade_extra_queries(maximal=4):
+    """Aktive Zusatz-Suchqueries aus Chris' Vorschlaegen (App schreibt sie mit Ablaufdatum).
+    Lokal: daten/vorschlaege.json; Supabase: einstellungen-Key 'extra_queries'."""
+    eintraege = []
+    if daten_modus() == "supabase":
+        zeilen = _supabase_get("einstellungen", {"select": "value", "key": "eq.extra_queries"})
+        if zeilen and isinstance(zeilen[0].get("value"), list):
+            eintraege = zeilen[0]["value"]
+    else:
+        eintraege = (_lade_json(VORSCHLAEGE_DATEI, {}) or {}).get("extra_queries", [])
+    jetzt = jetzt_iso()
+    aktiv = [e.get("query", "").strip() for e in eintraege
+             if e.get("query") and str(e.get("bis", "")) > jetzt]
+    return aktiv[:maximal]
+
+
+def lade_fuer_neubewertung():
+    """Videos fuer die Bestands-Neubewertung: analysiert (claim vorhanden), aber noch
+    ohne Websuche-Verifikation (claim.websuche fehlt = alte Pipeline), und nur solche,
+    die der Nutzer noch nicht entschieden hat (status inbox/strittig/archiv)."""
+    if daten_modus() == "supabase":
+        zeilen = _supabase_get("videos", {
+            "select": "*",
+            "claim": "not.is.null",
+            "claim->>websuche": "is.null",
+            "status": "in.(%s)" % ",".join(ANALYSE_SCHREIBBAR),
+        })
+        return zeilen or []
+    return [v for v in _lade_json(VIDEOS_DATEI, [])
+            if v.get("claim") and not v["claim"].get("websuche")
+            and v.get("status") in ANALYSE_SCHREIBBAR]
+
+
 def lade_unanalysierte():
     """Videos ohne Analyse (claim=null, status=inbox) vollstaendig laden — fuer --nachanalyse."""
     if daten_modus() == "supabase":

@@ -20,6 +20,8 @@ export interface Claim {
   thema: string; // Slug aus mythen_katalog.THEMEN
   // Ergebnis der Websuche-Verifikation (Stufe C+); null/fehlend = nicht gelaufen
   websuche?: string | null;
+  // Belege aus der Stufe-C+-Websuche — jede Falschbehauptung kommt mit Quellen
+  quellen?: Quelle[];
 }
 
 export interface Quelle {

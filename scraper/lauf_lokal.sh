@@ -25,8 +25,9 @@ if [ -f "$PROJEKT_DIR/.env" ]; then
   set +a
 fi
 
-# Nie zwei Läufe parallel (mkdir ist atomar); verwaiste Locks nach 3 h ignorieren
-LOCK="${TMPDIR:-/tmp}/wolfradar-lauf.lock"
+# Nie zwei Läufe parallel (mkdir ist atomar); verwaiste Locks nach 3 h ignorieren.
+# FESTER Pfad (nicht $TMPDIR): die App prüft/startet Läufe über denselben Lock.
+LOCK="/tmp/wolfradar-lauf.lock"
 if [ -d "$LOCK" ] && [ -n "$(find "$LOCK" -maxdepth 0 -mmin +180 2>/dev/null)" ]; then
   rmdir "$LOCK" 2>/dev/null || true
 fi

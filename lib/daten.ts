@@ -144,6 +144,24 @@ function filterAnwenden(videos: Video[], filter?: VideoFilter): Video[] {
   return [...liste].sort((a, b) => (b.score || 0) - (a.score || 0));
 }
 
+/**
+ * Dynamisches Ranking: Chris' Feedback (themen_boost aus Annehmen/Ablehnen/Vorschlägen)
+ * verschiebt die Reihenfolge SOFORT — ±25 Punkte bei vollem Boost. Der gespeicherte
+ * Score bleibt unangetastet (nachvollziehbar), nur die Sortierung reagiert live.
+ */
+async function feedbackSortierung(videos: Video[]): Promise<Video[]> {
+  let boost: Record<string, number> = {};
+  try {
+    boost = (await holeEinstellungen()).gelernt.themen_boost || {};
+  } catch {
+    return videos; // ohne Einstellungen: unveränderte Reihenfolge
+  }
+  if (Object.keys(boost).length === 0) return videos;
+  const dyn = (v: Video) =>
+    (v.score || 0) + Math.round(25 * (boost[v.claim?.thema || ""] || 0));
+  return [...videos].sort((a, b) => dyn(b) - dyn(a));
+}
+
 export async function holeVideos(filter?: VideoFilter): Promise<Video[]> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
@@ -160,9 +178,9 @@ export async function holeVideos(filter?: VideoFilter): Promise<Video[]> {
     }
     const { data, error } = await q;
     if (error) throw new Error("Supabase-Fehler (videos): " + error.message);
-    return (data || []) as Video[];
+    return feedbackSortierung((data || []) as Video[]);
   }
-  return filterAnwenden(liesJson<Video[]>("videos.json", []), filter);
+  return feedbackSortierung(filterAnwenden(liesJson<Video[]>("videos.json", []), filter));
 }
 
 export async function holeVideo(id: string): Promise<Video | null> {

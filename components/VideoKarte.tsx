@@ -108,6 +108,19 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
                   <p className="warum">
                     <b>Warum falsch:</b> {video.claim.begruendung}
                   </p>
+                  {(video.claim.quellen?.length ?? 0) > 0 && (
+                    <p className="claim-quellen">
+                      <b>Belege:</b>{" "}
+                      {video.claim.quellen!.slice(0, 4).map((q, i) => (
+                        <span key={q.url}>
+                          {i > 0 && " · "}
+                          <a href={q.url} target="_blank" rel="noopener noreferrer" title={q.titel}>
+                            {q.titel.length > 40 ? q.titel.slice(0, 38) + "…" : q.titel}
+                          </a>
+                        </span>
+                      ))}
+                    </p>
+                  )}
                   <span className="chip"># {themaLabel(video.claim.thema)}</span>
                 </>
               ) : (

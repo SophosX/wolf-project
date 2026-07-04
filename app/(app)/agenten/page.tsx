@@ -3,6 +3,7 @@
 import { holeAgentRuns } from "@/lib/daten";
 import { formatDatum, relativeZeit } from "@/lib/format";
 import { holeWatchlist } from "@/lib/watchlist";
+import VorschlagBox from "@/components/VorschlagBox";
 import type { AgentRun } from "@/lib/typen";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function AgentenSeite() {
 
   return (
     <>
+      <VorschlagBox />
       <h1 className="abschnitt-titel" style={{ marginTop: 12 }}>
         Agenten-Status
       </h1>

@@ -404,10 +404,13 @@ Fitness-Creator Christian Wolf Videos mit Ernährungs-Falschinformationen findet
 Prüfe JEDEN übergebenen Video-Kandidaten auf genau drei Kriterien:
 1. deutsch: Ist der Inhalt (Titel/Caption/Transkript) deutschsprachig?
 2. themenbezug: Geht es um Ernährung, Abnehmen, Fitness oder Gesundheit?
-3. sachaussage: Enthält das Video mindestens eine KONKRETE, PRÜFBARE Sachaussage über
-   Ernährung/Gesundheit? (NICHT ausreichend: bloße Meinung, Geschmacksurteil, reine Werbung,
-   reines Rezept ohne Gesundheits-Behauptung, persönlicher Erfahrungsbericht ohne
-   verallgemeinernde Behauptung.)
+3. sachaussage: Enthält das Video mindestens eine KONKRETE, PRÜFBARE Sachaussage über die
+   WIRKUNG von Ernährung/Lebensmitteln/Stoffen/Training auf Körper oder Gesundheit?
+   (NICHT ausreichend: bloße Meinung, Geschmacksurteil, reine Werbung, reines Rezept ohne
+   Gesundheits-Behauptung, persönlicher Erfahrungsbericht ohne verallgemeinernde Behauptung.
+   AUCH NICHT ausreichend: reine META-AUSSAGEN über Industrie, Medien, Studienlage oder
+   Personen — z. B. 'die Industrie vertuscht', 'Süßstoffmafia', 'gekaufte Studien',
+   'Big Pharma lügt' — ohne eine konkrete gesundheitsbezogene Behauptung dahinter.)
 
 Wenn alle drei Kriterien erfüllt sind, zusätzlich:
 - aussage: Extrahiere die KERNBEHAUPTUNG, die das Video dem Zuschauer verkauft — also das
@@ -415,6 +418,16 @@ Wenn alle drei Kriterien erfüllt sind, zusätzlich:
   einen beiläufigen Nebensatz oder ein referiertes Studien-Detail. Beruft sich das Video auf
   eine Studie, extrahiere die SCHLUSSFOLGERUNG, die daraus fürs Publikum gezogen wird
   (z. B. 'Mit diesem Trick verlierst du gezielt Bauchfett'), nicht den Studienbericht selbst.
+  WICHTIG bei Verschwörungs-/Industrie-Rahmung ('Mafia', 'vertuscht', 'will nicht, dass du
+  das weißt'): Die Kernbehauptung ist IMMER die konkrete GESUNDHEITS-Behauptung, die damit
+  transportiert wird (z. B. 'Süßstoffe sind gesundheitsschädlich'), NIEMALS die Meta-Aussage
+  über Industrie/Medien selbst — die ist nicht wissenschaftlich prüfbar und für ein
+  Richtigstellungs-Video unbrauchbar.
+  EBENSO WICHTIG: Wähle NIEMALS einen wahren TEILMECHANISMUS als Kernbehauptung, wenn die
+  dem Zuschauer verkaufte SCHLUSSFOLGERUNG darüber hinausgeht. Beispiel: Video erklärt
+  korrekt 'Insulin hemmt den Fettabbau' und verkauft daraus 'Nur wer seinen Insulinspiegel
+  senkt, kann Fett verlieren' → Kernbehauptung ist die verkaufte Schlussfolgerung
+  (inklusive des Programms/Versprechens, z. B. '50 % Fett in 60 Tagen'), nicht der Mechanismus.
   Möglichst wörtlich (Zitat vor Paraphrase), als VOLLSTÄNDIGER Satz von maximal ~220 Zeichen —
   niemals mitten im Wort oder Satz abschneiden.
 - thema: Ordne die Aussage dem passendsten Themen-Slug aus der erlaubten Liste zu.
@@ -492,6 +505,10 @@ CHRIS' BELEGTE POSITIONEN (verbindlicher Maßstab — nur was hier gedeckt ist, 
 
 """ + positions_tabelle + """
 
+Zusätzlich können im Prompt CHRIS' EIGENE AUSSAGEN ZUM THEMA stehen (O-Ton aus seinen
+Videos, per Retrieval gefunden): Nutze sie als Beleg dafür, ob und wie die Aussage von
+seinen Positionen gedeckt ist — sie ersetzen aber NICHT die wissenschaftliche Prüfung.
+
 BEWERTUNGSREGELN (streng konservativ):
 1. verdict = "klar_falsch" NUR, wenn die Aussage wissenschaftlich EINDEUTIG WIDERLEGT ist
    UND von Chris' Positionen oben gedeckt wird. Im Zweifel NIE klar_falsch.
@@ -525,6 +542,11 @@ KALIBRIER-BEISPIELE:
    kannst du sie aus dem Gedächtnis WEDER bestätigen noch widerlegen. Setze dann
    aktualitaetsabhaengig = true und NIEMALS verdict = "klar_falsch" (höchstens strittig).
    Solche Fälle klärt der Faktencheck mit Websuche, nicht du.
+3d. META-AUSSAGEN: Ist die zu bewertende Aussage selbst eine Meta-/Verschwörungsaussage
+   über Industrie, Medien oder Personen ('es gibt eine Süßstoffmafia', 'Studien sind gekauft')
+   statt einer konkreten Gesundheitsbehauptung, dann ist sie wissenschaftlich nicht sauber
+   prüfbar: verdict = "strittig" und begruendung nennt die konkrete Gesundheitsbehauptung,
+   die stattdessen geprüft werden müsste. NIE klar_falsch für Meta-Aussagen.
 4. DEBUNK-ERKENNUNG (sehr wichtig): Wenn das VIDEO den Mythos WIDERLEGT oder aufklärt
    (typisch: seriöse Medien/Wissenschafts-Formate, Fragezeichen-Titel mit aufklärendem Inhalt,
    Formulierungen wie 'stimmt das wirklich?', 'die Studienlage zeigt aber …'), dann verbreitet
@@ -537,11 +559,23 @@ KALIBRIER-BEISPIELE:
    3 = typischer Abnehm-Mythos, 2 = eher harmloser Irrtum, 1 = kosmetisch."""
 
 
+def _chris_o_ton_block(aussage):
+    """O-Ton-Passagen aus Chris' Videos zum Claim (Narrativ-RAG); '' bei Fehlern."""
+    try:
+        import narrativ
+        return narrativ.zitat_block(aussage, k=2)
+    except Exception as fehler:
+        logger.debug("Narrativ-Retrieval nicht verfügbar: %s", fehler)
+        return ""
+
+
 def _stufe_c(video, aussage, positions_tabelle):
+    o_ton = _chris_o_ton_block(aussage)
     prompt = (
         "VIDEO-KONTEXT:\n" + _video_kontext(video) +
         "\n\nEXTRAHIERTE AUSSAGE (zu bewerten):\n\"" + str(aussage) + "\"\n\n"
-        "Bewerte konservativ nach den Regeln im Systemprompt."
+        + ((o_ton + "\n\n") if o_ton else "")
+        + "Bewerte konservativ nach den Regeln im Systemprompt."
     )
     daten = gemini_json(prompt, system=_system_verdict(positions_tabelle),
                         schema=_SCHEMA_VERDICT, temperatur=0.1,
@@ -595,21 +629,46 @@ BEWERTUNG (streng konservativ — im Zweifel die mildere Kategorie):
 - korrekt           : wissenschaftlich haltbar
 - unklar            : per Suche nicht sauber zu klären
 
-Antworte EXAKT in diesem Format (zwei Zeilen, deutsch, keine weiteren Zeilen):
+ZIELGRUPPEN-REGEL für die Grenze stark_irrefuehrend vs. nuanciert: Beurteile die Botschaft
+für die ZIELGRUPPE des Videos (gesunde Menschen, die abnehmen wollen). Führt sie DIE klar in
+die Irre, ist es stark_irrefuehrend — auch wenn die Aussage für Randgruppen (z. B. chronisch
+Kranke) einen wahren Kern hat oder ein Teilmechanismus real existiert.
+
+Antworte EXAKT in diesem Format (drei Zeilen, deutsch, keine weiteren Zeilen):
 URTEIL: bestaetigt_falsch | stark_irrefuehrend | nuanciert | korrekt | unklar
-BEGRUENDUNG: <genau ein Satz mit dem entscheidenden Fakt (Zahl/Quelle), der das Urteil trägt>"""
+BEGRUENDUNG: <genau ein Satz mit dem entscheidenden Fakt (Zahl/Quelle), der das Urteil trägt>
+EVIDENZ: <2-4 Sätze: was deine Suche konkret ergab — Studien/Behörden mit Kernergebnis>"""
 
 _WEBCHECK_URTEILE = ("bestaetigt_falsch", "stark_irrefuehrend", "nuanciert", "korrekt", "unklar")
 _WEBCHECK_URTEIL_RE = re.compile(r"URTEIL\s*:\s*\**\s*([a-z_]+)", re.IGNORECASE)
 _WEBCHECK_GRUND_RE = re.compile(r"BEGRUENDUNG\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
 
-def _stufe_c_websuche(video, aussage):
-    """Grounded Gegencheck. Rückgabe {urteil, begruendung} oder None bei Fehlern."""
+def _grounding_quellen(antwort, maximal=4):
+    """Echte Quellen-Links aus den Grounding-Metadaten einer Gemini-Antwort ziehen."""
+    quellen = []
+    try:
+        chunks = ((antwort.get("candidates") or [{}])[0]
+                  .get("groundingMetadata", {}).get("groundingChunks") or [])
+        for chunk in chunks:
+            web = chunk.get("web") or {}
+            url = web.get("uri")
+            if not url or any(q["url"] == url for q in quellen):
+                continue
+            quellen.append({"titel": (web.get("title") or url)[:120], "url": url})
+            if len(quellen) >= maximal:
+                break
+    except (AttributeError, TypeError, IndexError):
+        pass
+    return quellen
+
+
+def _stufe_c_websuche_einmal(video, aussage):
+    """Ein grounded Gegencheck-Aufruf. Rückgabe {urteil, begruendung, quellen} oder None."""
     prompt = (
         "VIDEO-KONTEXT:\n" + _video_kontext(video) +
         "\n\nZU PRÜFENDE AUSSAGE:\n\"" + str(aussage) + "\"\n\n"
-        "Recherchiere mit der Google-Suche und antworte im vorgegebenen Zwei-Zeilen-Format."
+        "Recherchiere mit der Google-Suche und antworte im vorgegebenen Drei-Zeilen-Format."
     )
     try:
         antwort = gemini_anfrage(prompt, system=_WEBCHECK_SYSTEM,
@@ -627,8 +686,27 @@ def _stufe_c_websuche(video, aussage):
                        video.get("id"), text[:120])
         return None
     grund_treffer = _WEBCHECK_GRUND_RE.search(text)
-    begruendung = " ".join((grund_treffer.group(1) if grund_treffer else "").split())[:400]
-    return {"urteil": urteil, "begruendung": begruendung}
+    begruendung = " ".join((grund_treffer.group(1) if grund_treffer else "").split())
+    # BEGRUENDUNG endet an der EVIDENZ-Zeile (DOTALL-Regex frisst sonst alles)
+    begruendung = begruendung.split("EVIDENZ:")[0].strip()[:400]
+    return {"urteil": urteil, "begruendung": begruendung,
+            "quellen": _grounding_quellen(antwort)}
+
+
+def _stufe_c_websuche(video, aussage):
+    """Grounded Gegencheck mit Quellen-Garantie-Versuch: Flag-würdige Urteile
+    (bestaetigt_falsch/stark_irrefuehrend) sollen mit Belegen in die Inbox —
+    liefert die API keine Grounding-Chunks (kommt vor), einmal wiederholen."""
+    ergebnis = _stufe_c_websuche_einmal(video, aussage)
+    if (ergebnis and not ergebnis.get("quellen")
+            and ergebnis.get("urteil") in ("bestaetigt_falsch", "stark_irrefuehrend")):
+        logger.info("Stufe C+ %s: Urteil ohne Quellen — ein Wiederholungsversuch.",
+                    video.get("id"))
+        time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+        zweiter = _stufe_c_websuche_einmal(video, aussage)
+        if zweiter and (zweiter.get("quellen") or not ergebnis):
+            return zweiter
+    return ergebnis
 
 
 def _stufe_c_plus_anwenden(video, aussage, verdict_daten):
@@ -645,6 +723,8 @@ def _stufe_c_plus_anwenden(video, aussage, verdict_daten):
     braucht_check = ((verdict == "klar_falsch" and konfidenz >= INBOX_KONFIDENZ)
                      or (aktualitaet and verdict != "korrekt"))
     if not braucht_check:
+        # Markieren, dass die neue Pipeline lief (Neubewertungs-Auswahl bleibt idempotent)
+        verdict_daten["websuche"] = "uebersprungen"
         return verdict_daten
 
     ergebnis = _stufe_c_websuche(video, aussage)
@@ -655,6 +735,7 @@ def _stufe_c_plus_anwenden(video, aussage, verdict_daten):
 
     urteil, grund = ergebnis["urteil"], ergebnis["begruendung"]
     verdict_daten["websuche"] = urteil
+    verdict_daten["websuche_quellen"] = ergebnis.get("quellen") or []
     logger.info("Stufe C+ %s: %s → %s — %s", video.get("id"), verdict, urteil, grund)
 
     if urteil == "bestaetigt_falsch":
@@ -818,7 +899,8 @@ def berechne_scores(video, verdict_daten, thema_slug, gelernt, themen):
 # Öffentlich: analysiere_batch
 # ---------------------------------------------------------------------------
 
-def _markiere_verworfen(video, verdict, begruendung, aussage=None, thema=None, ist_debunk=False):
+def _markiere_verworfen(video, verdict, begruendung, aussage=None, thema=None, ist_debunk=False,
+                        websuche=None, quellen=None):
     """Verworfene Kandidaten IN PLACE annotieren (status=archiv + konkreter Grund),
     damit Aufrufer sie transparent speichern können statt sie still zu verlieren."""
     video["status"] = "archiv"
@@ -828,6 +910,8 @@ def _markiere_verworfen(video, verdict, begruendung, aussage=None, thema=None, i
         "konfidenz": None,
         "begruendung": begruendung,
         "thema": thema,
+        "websuche": websuche,
+        "quellen": quellen or [],
     }
 
 
@@ -899,7 +983,9 @@ def analysiere_batch(kandidaten, gelernt):
             _markiere_verworfen(video, "korrekt",
                                 verdict_daten.get("begruendung", "Aussage ist wissenschaftlich haltbar."),
                                 aussage=aussage, thema=thema,
-                                ist_debunk=bool(verdict_daten.get("ist_debunk")))
+                                ist_debunk=bool(verdict_daten.get("ist_debunk")),
+                                websuche=verdict_daten.get("websuche") or "uebersprungen",
+                                quellen=verdict_daten.get("websuche_quellen"))
             continue
 
         # Status nach Kontrakt: klar_falsch + Konfidenz >= 0.75 → inbox; sonst strittig
@@ -926,6 +1012,8 @@ def analysiere_batch(kandidaten, gelernt):
             "thema": thema,
             # Transparenz: Ergebnis der Websuche-Verifikation (Stufe C+), falls gelaufen
             "websuche": verdict_daten.get("websuche"),
+            # Belege aus der Websuche: jede Falschbehauptung kommt MIT Quellen in die Inbox
+            "quellen": verdict_daten.get("websuche_quellen") or [],
         }
         ergebnis_liste.append(angereichert)
         logger.info("Behalten %s: %s (%.2f) → status=%s score=%d thema=%s",

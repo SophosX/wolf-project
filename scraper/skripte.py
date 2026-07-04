@@ -289,6 +289,16 @@ def _skript_prompt(video, recherche_text):
     else:
         zeilen += ["", "HINWEIS: Keine Recherche verfügbar — nutze nur etabliertes Konsens-Wissen "
                        "und bleib bei Zahlen konservativ."]
+    # Narrativ-RAG: Chris' echte Formulierungen zum Thema — Skripte klingen nach IHM,
+    # weil sein eigenes Wording (inkl. früherer Richtigstellungen) im Prompt liegt
+    try:
+        import narrativ
+        o_ton = narrativ.zitat_block(str(claim.get("aussage", "")), k=3)
+        if o_ton:
+            zeilen += ["", o_ton,
+                       "(Übernimm Haltung und typische Formulierungen, zitiere dich nicht wörtlich selbst.)"]
+    except Exception as fehler:
+        logger.debug("Narrativ-Retrieval für Skripte nicht verfügbar: %s", fehler)
     zeilen += ["", "Schreibe jetzt die drei Skript-Varianten."]
     return "\n".join(zeilen)
 

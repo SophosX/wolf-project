@@ -247,9 +247,25 @@ def watchlist_uploads(watchlist_eintraege, fehler):
     der letzten 30 Tage (channels.list + playlistItems.list, je 1 Quota-Einheit).
     Rueckgabe: Liste roher Kandidaten (quelle='watchlist').
     """
-    kanal_ids = [e["youtube"] for e in watchlist_eintraege if e.get("youtube")]
-    if not kanal_ids:
+    kanal_roh = [e["youtube"] for e in watchlist_eintraege if e.get("youtube")]
+    if not kanal_roh:
         return []
+
+    # Watchlist-Eintraege koennen Kanal-IDs (UC...) ODER Handles sein
+    # (Vorschlags-/Folgen-Funktion speichert Handles) -> Handles aufloesen
+    kanal_ids = []
+    for eintrag in kanal_roh:
+        if eintrag.startswith("UC") and len(eintrag) >= 20:
+            kanal_ids.append(eintrag)
+            continue
+        antwort = _api_get("channels", {
+            "part": "id", "forHandle": eintrag.lstrip("@"),
+        }, fehler)
+        items = (antwort or {}).get("items") or []
+        if items:
+            kanal_ids.append(items[0]["id"])
+        else:
+            fehler.append("youtube watchlist: Handle %r nicht aufloesbar" % eintrag)
 
     # Uploads-Playlists + Abonnenten in einem Rutsch
     kanal_info = {}
@@ -431,16 +447,24 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
     return erfolgreich
 
 
-def sammle(watchlist_eintraege):
+def sammle(watchlist_eintraege, extra_queries=None):
     """
     Haupteinstieg fuer lauf.py.
+    extra_queries: Zusatz-Queries aus Chris' Vorschlaegen — laufen IMMER mit und
+    verdraengen Rotations-Slots (Quota bleibt konstant: QUERIES_PRO_LAUF gesamt).
     Rueckgabe: {"kandidaten": [...], "fehler": [...]}
     (Transkripte werden separat NACH dem Vorfilter geholt: hole_transkripte)
     """
     fehler = []
     kandidaten = []
     try:
-        kandidaten.extend(claim_suche(fehler))
+        queries = None
+        if extra_queries:
+            extras = [q for q in extra_queries if q][:4]
+            rotation = _query_rotation(SUCHQUERIES, max(1, QUERIES_PRO_LAUF - len(extras)))
+            queries = extras + [q for q in rotation if q not in extras]
+            print("[youtube] Vorschlags-Queries aktiv: %s" % ", ".join(extras))
+        kandidaten.extend(claim_suche(fehler, queries=queries))
     except Exception as e:
         fehler.append("youtube claim_suche: Abbruch: %s" % e)
     try:

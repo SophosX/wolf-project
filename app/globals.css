@@ -170,6 +170,36 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
 .warum { margin-top: 8px; font-size: 14px; color: var(--text-dim); }
 .warum b { color: var(--text); font-weight: 600; }
 
+/* Nachschub-Leiste (Inbox-Dynamik) */
+.nachschub-leiste {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 10px 0 2px;
+}
+.nachschub-status { font-size: 13.5px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 8px; }
+.nachschub-meldung { font-size: 13px; color: var(--text-dim); }
+.puls {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--akzent);
+  animation: nachschub-puls 1.2s ease-in-out infinite;
+}
+@keyframes nachschub-puls { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+/* Vorschlags-Box (Agenten-Seite) */
+.vorschlag-box {
+  background: var(--flaeche); border: 1px solid var(--linie); border-radius: 12px;
+  padding: 16px; margin-top: 16px;
+}
+.vorschlag-box textarea { width: 100%; resize: vertical; }
+.vorschlag-liste { list-style: none; padding: 0; margin: 12px 0 0; }
+.vorschlag-liste li { border-top: 1px solid var(--linie); padding: 8px 0; }
+.vorschlag-text { font-size: 14px; font-weight: 600; }
+.vorschlag-ableitung { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+
+/* Belege aus der Websuche-Verifikation (Stufe C+) direkt an der Karte */
+.claim-quellen { margin-top: 6px; font-size: 12.5px; color: var(--text-dim); }
+.claim-quellen b { color: var(--text); font-weight: 600; }
+.claim-quellen a { color: var(--akzent); text-decoration: none; }
+.claim-quellen a:hover { text-decoration: underline; }
+
 .chip {
   display: inline-block; font-size: 12px; font-weight: 600;
   background: var(--flaeche-hell); border: 1px solid var(--linie);

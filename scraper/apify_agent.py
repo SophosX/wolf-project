@@ -25,6 +25,22 @@ APIFY_BASIS = "https://api.apify.com/v2"
 IG_ACTOR = os.environ.get("APIFY_IG_ACTOR", "apify~instagram-scraper")
 TIMEOUT_S = 300
 
+# Discovery: kuratierte grosse DE-Profile jenseits der Watchlist (verifizierte Handles)
+DISCOVERY_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "discovery_instagram.json")
+DISCOVERY_LIMIT_PRO_PROFIL = int(os.environ.get("RADAR_IG_DISCOVERY_LIMIT", "8"))
+
+
+def _lade_discovery():
+    """Discovery-Profile laden; abschaltbar per RADAR_IG_DISCOVERY=0."""
+    if (os.environ.get("RADAR_IG_DISCOVERY", "1").strip() or "1") == "0":
+        return []
+    try:
+        with open(DISCOVERY_DATEI, encoding="utf-8") as f:
+            return json.load(f).get("profile", [])
+    except (OSError, ValueError):
+        return []
+
 
 def token():
     return os.environ.get("APIFY_TOKEN") or None
@@ -52,31 +68,60 @@ def _iso(zeit):
     return zeit if zeit else None
 
 
-def sammle_instagram(watchlist, limit_pro_profil=15):
-    """
-    Watchlist-Instagram-Profile über den Apify-Instagram-Scraper einsammeln.
-    Rückgabe wie die anderen Agenten: {"kandidaten": [...], "fehler": [...]}
-    Kandidaten im Kontrakt-Format (plattform=instagram, quelle=watchlist).
-    """
-    kandidaten, fehler = [], []
-    # watchlist kann Liste (lauf.py) oder {"eintraege": [...]} (Rohdatei) sein
-    eintraege = watchlist if isinstance(watchlist, list) else watchlist.get("eintraege", [])
-    profile = [e for e in eintraege if e.get("instagram")]
-    if not profile:
-        return {"kandidaten": [], "fehler": []}
+def _item_zu_kandidat(it, handle_zu_name, quelle):
+    """Apify-Post-Item -> Kandidaten-Dict im Kontrakt-Format (None wenn unbrauchbar)."""
+    kurz = it.get("shortCode") or it.get("shortcode")
+    if not kurz:
+        return None
+    handle = (it.get("ownerUsername") or "").lower()
+    caption = it.get("caption") or ""
+    return {
+        "id": "instagram:%s" % kurz,
+        "plattform": "instagram",
+        "video_id": kurz,
+        "url": it.get("url") or ("https://www.instagram.com/p/%s/" % kurz),
+        "titel": caption.split("\n")[0][:120] if caption else "(ohne Caption)",
+        "kanal": handle_zu_name.get(handle, it.get("ownerFullName") or handle),
+        "kanal_id": "@" + handle if handle else None,
+        "kanal_follower": (it.get("owner") or {}).get("followersCount"),
+        "veroeffentlicht": _iso(it.get("timestamp")),
+        "views": it.get("videoPlayCount") or it.get("videoViewCount") or 0,
+        "likes": it.get("likesCount") or 0,
+        "kommentare": it.get("commentsCount") or 0,
+        "dauer_s": int(it["videoDuration"]) if it.get("videoDuration") else None,
+        "thumbnail_url": it.get("displayUrl"),
+        "caption": caption[:3000],
+        "transkript": None,
+        # transient (wird vor dem Speichern entfernt): kurzlebige CDN-URL
+        # des Reels — Beschaffungsweg für die Audio-Transkription
+        "apify_video_url": _video_url_aus_item(it),
+        "gefunden_am": _jetzt_iso(),
+        "quelle": quelle,
+        "status": "inbox",
+        "score": 0,
+        "scores": {},
+        "claim": None,
+        "skripte": [],
+        "feedback": [],
+    }
 
-    urls = ["https://www.instagram.com/%s/" % e["instagram"] for e in profile]
-    handle_zu_name = {e["instagram"].lower(): e["name"] for e in profile}
+
+def _sammle_profile(profil_handles, handle_zu_name, limit, quelle, kandidaten, fehler,
+                    abdeckungs_check=True):
+    """Einen Satz IG-Profile über den Apify-Actor einsammeln (ein Actor-Lauf)."""
+    if not profil_handles:
+        return
+    urls = ["https://www.instagram.com/%s/" % h for h in profil_handles]
     try:
         items = _run_sync(IG_ACTOR, {
             "directUrls": urls,
             "resultsType": "posts",
-            "resultsLimit": limit_pro_profil,
+            "resultsLimit": limit,
             "addParentData": True,
         })
     except Exception as e:
-        fehler.append("apify instagram: Lauf fehlgeschlagen: %s" % e)
-        return {"kandidaten": [], "fehler": fehler}
+        fehler.append("apify instagram (%s): Lauf fehlgeschlagen: %s" % (quelle, e))
+        return
 
     gesehene_handles = set()
     for it in items or []:
@@ -87,50 +132,52 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
                 wer = it.get("username") or quelle_url.rstrip("/").split("/")[-1] or "?"
                 fehler.append("apify instagram @%s: %s" % (wer, it["error"]))
                 continue
-            kurz = it.get("shortCode") or it.get("shortcode")
-            if not kurz:
+            kandidat = _item_zu_kandidat(it, handle_zu_name, quelle)
+            if kandidat is None:
                 continue
             handle = (it.get("ownerUsername") or "").lower()
             if handle:
                 gesehene_handles.add(handle)
-            caption = it.get("caption") or ""
-            kandidaten.append({
-                "id": "instagram:%s" % kurz,
-                "plattform": "instagram",
-                "video_id": kurz,
-                "url": it.get("url") or ("https://www.instagram.com/p/%s/" % kurz),
-                "titel": caption.split("\n")[0][:120] if caption else "(ohne Caption)",
-                "kanal": handle_zu_name.get(handle, it.get("ownerFullName") or handle),
-                "kanal_id": "@" + handle if handle else None,
-                "kanal_follower": (it.get("owner") or {}).get("followersCount"),
-                "veroeffentlicht": _iso(it.get("timestamp")),
-                "views": it.get("videoPlayCount") or it.get("videoViewCount") or 0,
-                "likes": it.get("likesCount") or 0,
-                "kommentare": it.get("commentsCount") or 0,
-                "dauer_s": int(it["videoDuration"]) if it.get("videoDuration") else None,
-                "thumbnail_url": it.get("displayUrl"),
-                "caption": caption[:3000],
-                "transkript": None,
-                # transient (wird vor dem Speichern entfernt): kurzlebige CDN-URL
-                # des Reels — Beschaffungsweg für die Audio-Transkription
-                "apify_video_url": _video_url_aus_item(it),
-                "gefunden_am": _jetzt_iso(),
-                "quelle": "watchlist",
-                "status": "inbox",
-                "score": 0,
-                "scores": {},
-                "claim": None,
-                "skripte": [],
-                "feedback": [],
-            })
+            kandidaten.append(kandidat)
         except Exception as e:
             fehler.append("apify instagram item: %s" % e)
-        time.sleep(0)  # kein Rate-Limit nötig — Apify liefert gesammelt
 
-    # Abdeckungs-Check: angefragte Profile, die weder Posts noch Fehler-Item lieferten
-    for handle, name in handle_zu_name.items():
-        if handle not in gesehene_handles and not any(("@%s" % handle) in f for f in fehler):
-            fehler.append("apify instagram @%s (%s): 0 Posts geliefert — Handle pruefen" % (handle, name))
+    if abdeckungs_check:
+        # Angefragte Profile, die weder Posts noch Fehler-Item lieferten
+        for handle in profil_handles:
+            h = handle.lower()
+            if h not in gesehene_handles and not any(("@%s" % h) in f for f in fehler):
+                fehler.append("apify instagram @%s (%s): 0 Posts geliefert — Handle pruefen"
+                              % (h, handle_zu_name.get(h, "?")))
+
+
+def sammle_instagram(watchlist, limit_pro_profil=15):
+    """
+    Instagram über den Apify-Scraper einsammeln:
+    (a) Watchlist-Profile (voll, mit Abdeckungs-Check),
+    (b) Discovery-Profile aus discovery_instagram.json (kleineres Limit).
+    Rückgabe wie die anderen Agenten: {"kandidaten": [...], "fehler": [...]}
+    """
+    kandidaten, fehler = [], []
+    # watchlist kann Liste (lauf.py) oder {"eintraege": [...]} (Rohdatei) sein
+    eintraege = watchlist if isinstance(watchlist, list) else watchlist.get("eintraege", [])
+    profile = [e for e in eintraege if e.get("instagram")]
+    handle_zu_name = {e["instagram"].lower(): e["name"] for e in profile}
+
+    _sammle_profile([e["instagram"] for e in profile], handle_zu_name,
+                    limit_pro_profil, "watchlist", kandidaten, fehler)
+
+    discovery = _lade_discovery()
+    if discovery:
+        watchlist_handles = set(handle_zu_name)
+        disco = [p for p in discovery
+                 if p.get("handle") and p["handle"].lower() not in watchlist_handles]
+        for p in disco:
+            handle_zu_name.setdefault(p["handle"].lower(), p.get("name", p["handle"]))
+        _sammle_profile([p["handle"] for p in disco], handle_zu_name,
+                        DISCOVERY_LIMIT_PRO_PROFIL, "discovery", kandidaten, fehler)
+        print("[apify] Discovery: %d Profile angefragt, gesamt %d Kandidaten"
+              % (len(disco), len(kandidaten)))
 
     return {"kandidaten": kandidaten, "fehler": fehler}
 

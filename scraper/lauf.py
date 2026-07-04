@@ -213,6 +213,120 @@ def nachanalyse(limit=None):
     return 0
 
 
+def neubewertung(limit=None):
+    """Bestand mit der aktuellen Pipeline neu bewerten (Qualitäts-Nachrüstung).
+
+    Ausgewählt werden analysierte Videos OHNE Websuche-Verifikation (= alte Pipeline),
+    deren Status der Nutzer noch nicht entschieden hat (inbox/strittig/archiv).
+    Vorher werden fehlende Transkripte beschafft (inkl. frischer Apify-CDN-URLs) —
+    gerade TikTok/Instagram wurden früher nur anhand der Caption beurteilt.
+    Debunk-Archivierungen bleiben unangetastet. Status darf sich in BEIDE
+    Richtungen ändern (archiv→inbox und inbox→archiv)."""
+    analysiere_batch, generiere_skripte = analyse_laden()
+    if analysiere_batch is None:
+        print("[neubewertung] analyse.py nicht verfuegbar — Abbruch")
+        return 1
+
+    videos = [v for v in speicher.lade_fuer_neubewertung()
+              if (v.get("claim") or {}).get("verdict") != "debunk"]
+    videos.sort(key=lambda v: -(v.get("views") or 0))
+    if limit:
+        videos = videos[:limit]
+    print("[neubewertung] %d Videos (alte Pipeline, ohne Websuche-Verifikation)" % len(videos))
+    if not videos:
+        return 0
+    start, fehler = time.time(), []
+    status_vorher = {v["id"]: v.get("status") for v in videos}
+
+    # --- Fehlende Transkripte beschaffen (Analyse soll Volltext sehen) -----
+    ohne_transkript = [v for v in videos if not v.get("transkript")]
+    if ohne_transkript:
+        ig_posts = [v for v in ohne_transkript if v.get("plattform") == "instagram" and v.get("url")]
+        if ig_posts:
+            try:
+                import apify_agent
+                if apify_agent.verfuegbar():
+                    urls = apify_agent.hole_video_urls([v["url"] for v in ig_posts], fehler)
+                    for v in ig_posts:
+                        if v.get("video_id") in urls:
+                            v["apify_video_url"] = urls[v["video_id"]]
+                    print("[neubewertung] Instagram: %d/%d frische CDN-URLs" % (len(urls), len(ig_posts)))
+            except ImportError:
+                pass
+        yt_ohne = [v for v in ohne_transkript if v.get("plattform") == "youtube"]
+        if yt_ohne:
+            youtube_agent.hole_transkripte(yt_ohne, fehler, min_views=0,
+                                           max_videos=min(len(yt_ohne), 25))
+        try:
+            import transkription
+            transkription.transkribiere_kandidaten(ohne_transkript, fehler,
+                                                   max_videos=25,
+                                                   min_views_kurz=1000, min_views_yt=1000)
+        except Exception as e:
+            fehler.append("neubewertung transkription: %s" % e)
+        # Transkripte sofort sichern (aktualisiere_analyse schreibt sie nicht)
+        neue_transkripte = [v for v in ohne_transkript if v.get("transkript")]
+        for v in ohne_transkript:
+            v.pop("apify_video_url", None)
+            v.pop("transkript_429", None)
+        if neue_transkripte:
+            speicher.speichere_videos(neue_transkripte)
+            print("[neubewertung] %d Transkripte nachgeholt und gesichert" % len(neue_transkripte))
+
+    # --- Neu analysieren (Chunk-weise, Checkpoint nach jedem Block) --------
+    CHUNK = 5
+    neu_bewertet = 0
+    for i in range(0, len(videos), CHUNK):
+        chunk = videos[i:i + CHUNK]
+        for v in chunk:  # alte Analyse-Felder zuruecksetzen, damit nichts durchsickert
+            v["claim"], v["status_alt"] = None, v.pop("status", None)
+        try:
+            ueberlebende = analysiere_batch(chunk) or []
+        except Exception as e:
+            fehler.append("chunk %d: %s" % (i // CHUNK + 1, e))
+            print("[neubewertung] FEHLER in Chunk %d: %s" % (i // CHUNK + 1, e))
+            continue
+        # Skripte nur fuer NEUE Inbox-Ankuenfte ohne vorhandenes Skript-Paket
+        frisch_inbox = [v for v in ueberlebende
+                        if v.get("status") == "inbox" and not v.get("skripte")]
+        if frisch_inbox and generiere_skripte is not None:
+            try:
+                generiere_skripte(frisch_inbox)
+            except Exception as e:
+                fehler.append("skripte chunk %d: %s" % (i // CHUNK + 1, e))
+        ueberlebt_ids = set(v["id"] for v in ueberlebende)
+        verworfene = [v for v in chunk if v["id"] not in ueberlebt_ids and v.get("claim")]
+        for v in list(ueberlebende) + verworfene:
+            v.pop("status_alt", None)
+        speicher.aktualisiere_analyse(ueberlebende)
+        speicher.aktualisiere_analyse(verworfene)
+        neu_bewertet += len(ueberlebende) + len(verworfene)
+        print("[neubewertung] Chunk %d/%d: %d neu bewertet"
+              % (i // CHUNK + 1, (len(videos) + CHUNK - 1) // CHUNK,
+                 len(ueberlebende) + len(verworfene)))
+
+    # --- Transparenz: Status-Wechsel ausgeben ------------------------------
+    nachher = {v["id"]: v.get("status") for v in speicher.lade_videos()}
+    wechsel = []
+    for vid, alt in status_vorher.items():
+        neu = nachher.get(vid)
+        if neu and neu != alt:
+            wechsel.append("%s: %s -> %s" % (vid, alt, neu))
+    print("[neubewertung] Status-Wechsel (%d):" % len(wechsel))
+    for w in wechsel:
+        print("   " + w)
+
+    speicher.speichere_agent_run({
+        "zeit": speicher.jetzt_iso(), "quelle": "neubewertung",
+        "gefunden": len(videos), "neu": 0, "analysiert": neu_bewertet,
+        "geflaggt": len([1 for w in wechsel if "-> inbox" in w]),
+        "fehler": fehler, "dauer_s": int(time.time() - start),
+    })
+    for f in fehler:
+        print("[neubewertung] FEHLER: %s" % f)
+    return 0
+
+
 def transkribiere_bestand(limit=None):
     """Backfill: bestehende Videos ohne Transkript nachtranskribieren (alle Plattformen).
     Instagram: frische CDN-URLs via Apify nachladen (die alten sind abgelaufen)."""
@@ -284,12 +398,16 @@ def main():
                         help="Nur bestehende unanalysierte Videos (claim=null) analysieren, kein Scraping")
     parser.add_argument("--transkribiere", action="store_true",
                         help="Backfill: bestehende Videos ohne Transkript nachtranskribieren, kein Scraping")
+    parser.add_argument("--neubewertung", action="store_true",
+                        help="Bestand ohne Websuche-Verifikation neu analysieren (inkl. Transkript-Nachholung), kein Scraping")
     args = parser.parse_args()
 
     if args.nachanalyse:
         return nachanalyse(limit=args.limit)
     if args.transkribiere:
         return transkribiere_bestand(limit=args.limit)
+    if args.neubewertung:
+        return neubewertung(limit=args.limit)
 
     quellen = [q.strip() for q in args.nur.split(",") if q.strip()]
     watchlist = lade_watchlist()
@@ -319,8 +437,15 @@ def main():
             pass
         return instagram_agent.sammle(watchlist)
 
+    # Zusatz-Queries aus Chris' Vorschlaegen (App schreibt sie, 7 Tage aktiv)
+    try:
+        extra_queries = speicher.lade_extra_queries()
+    except Exception as e:
+        print("[lauf] WARNUNG: extra_queries nicht ladbar: %s" % e)
+        extra_queries = []
+
     agenten = {
-        "youtube": lambda: youtube_agent.sammle(watchlist),
+        "youtube": lambda: youtube_agent.sammle(watchlist, extra_queries=extra_queries),
         "tiktok": lambda: tiktok_agent.sammle(watchlist),
         "instagram": instagram_sammeln,
     }

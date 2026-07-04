@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aktualisiereVideo, holeVideo } from "@/lib/daten";
 import { lernUpdate } from "@/lib/lernen";
+import { nachschubBeiBedarf } from "@/lib/nachschub";
 import type { Status } from "@/lib/typen";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest) {
       await lernUpdate(video, aktion, kommentar);
     } catch (e) {
       console.error("[api/feedback] Lern-Update fehlgeschlagen:", e);
+    }
+
+    // Dynamik: wird die Inbox durch Entscheidungen dünn, sucht der Radar
+    // sofort Nachschub (lokal; in Prod übernimmt der 4-h-Cron)
+    if (aktion === "angenommen" || aktion === "abgelehnt" || aktion === "archiv") {
+      nachschubBeiBedarf().catch(() => {});
     }
 
     return NextResponse.json({ ok: true, video: aktualisiert });

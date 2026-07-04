@@ -4,6 +4,7 @@
 // Direkt über die REST-API (keine SDK-Abhängigkeit), Modell: gemini-2.5-flash
 
 import { ladeWissen } from "./wissen";
+import { chrisOTonBlock } from "./narrativ";
 import type { Quelle, Skript, Video } from "./typen";
 
 // Zwei Qualitätsstufen (User-Vorgabe: Faktencheck & Skripte auf hochwertigem Modell):
@@ -126,13 +127,40 @@ function videoKontext(video: Video): string {
   return teile.join("\n");
 }
 
-function feedbackKontext(video: Video): string {
-  const relevant = (video.feedback || []).filter((f) => f.kommentar);
-  if (relevant.length === 0) return "";
-  return (
-    "\n\nFEEDBACK VON CHRIS' TEAM ZU DIESEM VIDEO (unbedingt berücksichtigen):\n" +
-    relevant.map((f) => "- [" + f.aktion + "] " + f.kommentar).join("\n")
-  );
+async function feedbackKontext(video: Video): Promise<string> {
+  const teile: string[] = [];
+  const eigene = (video.feedback || []).filter((f) => f.kommentar);
+  if (eigene.length > 0) {
+    teile.push(
+      "FEEDBACK VON CHRIS ZU DIESEM VIDEO (unbedingt berücksichtigen):\n" +
+        eigene.map((f) => "- [" + f.aktion + "] " + f.kommentar).join("\n")
+    );
+  }
+  // Adaptives System: was Chris global und zu diesem THEMA früher gesagt hat
+  try {
+    const { holeEinstellungen, holeVideos } = await import("./daten");
+    const notizen = (await holeEinstellungen()).gelernt.notizen.slice(0, 5);
+    if (notizen.length > 0) {
+      teile.push("GELERNTES FEEDBACK VON CHRIS (beachten!):\n- " + notizen.join("\n- "));
+    }
+    const thema = video.claim?.thema;
+    if (thema) {
+      const verwandt = (await holeVideos())
+        .filter((v) => v.id !== video.id && v.claim?.thema === thema)
+        .flatMap((v) =>
+          (v.feedback || [])
+            .filter((f) => f.kommentar)
+            .map((f) => "- [" + f.aktion + " / " + v.titel.slice(0, 45) + "] " + f.kommentar)
+        )
+        .slice(-3);
+      if (verwandt.length > 0) {
+        teile.push("FRÜHERE KOMMENTARE VON CHRIS ZU DIESEM THEMA:\n" + verwandt.join("\n"));
+      }
+    }
+  } catch {
+    /* Lern-Kontext ist optional */
+  }
+  return teile.length > 0 ? "\n\n" + teile.join("\n\n") : "";
 }
 
 const SKRIPT_TRENNER = /===\s*VARIANTE\s*(\d)\s*\|\s*([a-z_]+)\s*===/gi;
@@ -140,6 +168,8 @@ const SKRIPT_TRENNER = /===\s*VARIANTE\s*(\d)\s*\|\s*([a-z_]+)\s*===/gi;
 /** Generiert 3 Skript-Varianten (mit Grounding für echte Quellen). */
 export async function generiereSkripte(video: Video): Promise<Skript[]> {
   const wissen = ladeWissen();
+  // Narrativ-RAG: Chris' echte Formulierungen zum Thema in den Prompt
+  const oTon = await chrisOTonBlock(video.claim?.aussage || video.titel, 3).catch(() => "");
   const prompt = [
     "Du bist der Skript-Autor von Christian Wolf (deutscher Fitness-Creator, 'Wolf Radar').",
     "Schreibe 3 Reaktions-Skript-Varianten (je 45-90 Sekunden Sprechzeit, Deutsch) auf das unten beschriebene Video mit einer klaren Ernährungs-Falschaussage.",
@@ -156,7 +186,8 @@ export async function generiereSkripte(video: Video): Promise<Skript[]> {
     "",
     "DAS ZIEL-VIDEO:",
     videoKontext(video),
-    feedbackKontext(video),
+    await feedbackKontext(video),
+    oTon ? "\n" + oTon : "",
     "",
     "Suche aktuelle, seriöse Belege (Metaanalysen, EFSA, DGE, BfR) für die Widerlegung und baue konkrete Zahlen ein (nachrechenbar, Dreisatz-tauglich).",
     "",
@@ -241,7 +272,7 @@ interface BehauptungsCheck {
 }
 
 /** Strukturierter Gemini-Aufruf (responseSchema; ohne Suche — schließen sich aus). */
-async function rufeGeminiJson<T>(
+export async function rufeGeminiJson<T>(
   prompt: string,
   schema: Record<string, unknown>,
   temperatur = 0.1,

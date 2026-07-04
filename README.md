@@ -29,6 +29,24 @@ Optional per ENV `RADAR_ZUGANGSCODE=<code>` hinter einen Zugangscode legen
 | `DATEN_MODUS` | `lokal` (Default) oder `supabase` |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | nur im Supabase-Modus (Server-only!) |
 
+## Adaptives System (Feedback, Vorschläge, Narrativ-RAG, Nachschub)
+
+- **Jede Bewertung wirkt sofort**: Annehmen/Ablehnen/Kommentar → `themen_boost` + Lern-Notizen
+  (`lib/lernen.ts`); das Ranking reagiert live (±25 Punkte bei vollem Boost, `lib/daten.ts`).
+  Kommentare fließen in die Skript-Generierung ein — auch themenverwandte frühere Kommentare.
+- **Vorschläge**: Chris schreibt dem Radar Freitext (Agenten-Seite) → Gemini leitet
+  Suchqueries (7 Tage in der YouTube-Rotation), Beobachtungs-Kanäle und Themen-Boosts ab
+  (`/api/vorschlag`, `lib/vorschlaege.ts`, lokal `daten/vorschlaege.json`).
+- **Narrativ-RAG**: `scraper/wissen/narrativ_index.json` (Embedding-Index über Chris'
+  eigene Video-Transkripte, Builder `scraper/narrativ_index_bauen.py`) — Verdict und
+  Skripte bekommen seine ECHTEN O-Töne zum Thema (`scraper/narrativ.py`, `lib/narrativ.ts`).
+- **Nachschub**: Wird die Inbox durch Entscheidungen dünn (< 6), startet lokal automatisch
+  ein Scraper-Lauf; zusätzlich Button „Jetzt neue Videos suchen" in der Inbox
+  (`/api/nachschub` — in Produktion übernimmt der 4-h-Cron).
+- **Neubewertung**: `python3 scraper/lauf.py --neubewertung` zieht Alt-Bestand auf die
+  aktuelle Pipeline (inkl. Websuche-Verifikation + Belege), User-Entscheidungen bleiben
+  unantastbar.
+
 ## Transkription (alle Plattformen)
 
 Neue Kandidaten werden im Lauf direkt transkribiert, damit Analyse & Faktencheck mit dem

@@ -1,0 +1,11 @@
+{
+  "kommentar": "Instagram-Discovery: kuratierte grosse DE-Ernaehrungs-/Fitness-Profile jenseits der Watchlist. Handles am 2026-07-04 via Apify verifiziert (resultsType=details). Laeuft im taeglichen IG-Lauf mit kleinerem Post-Limit; Kandidaten gehen mit quelle=discovery in den Vorfilter.",
+  "profile": [
+    {"handle": "liebscher.bracht", "name": "Liebscher & Bracht", "follower": 852375, "notiz": "Schmerz-/Gesundheitscontent mit Ernaehrungs-Claims (Nieren-Mythos-Fund kam von ihrem YT-Kanal)"},
+    {"handle": "fitgreenmind", "name": "Maya Leinenbach", "follower": 3952046, "notiz": "Groesste deutsche Vegan-Creatorin, viele Ernaehrungs-Aussagen"},
+    {"handle": "sophia.thiel", "name": "Sophia Thiel", "follower": 1307659, "notiz": "Fitness/Abnehmen, grosse Reichweite"},
+    {"handle": "tim_gabel", "name": "Tim Gabel", "follower": 529019, "notiz": "Fitness-Podcast/Interviews — Chris hat auf Podcast-Aussagen reagiert (Wissensbasis)"},
+    {"handle": "fitnessoskar", "name": "Fitness Oskar", "follower": 518786, "notiz": "Taeglicher Abnehm-/Ernaehrungscontent"},
+    {"handle": "coach_cecil", "name": "Coach Cecil", "follower": 260389, "notiz": "Gesundheits-Claims, verschwoerungs-affin — klassischer Falschinfo-Kandidat"}
+  ]
+}
