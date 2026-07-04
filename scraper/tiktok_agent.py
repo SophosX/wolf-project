@@ -36,7 +36,9 @@ DETAIL_TIMEOUT = 60
 DISCOVERY_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "discovery.json")
 DISCOVERY_MAX_VIDEOS = 15      # nur die neuesten 15 Videos pro Discovery-Profil
-DISCOVERY_MIN_VIEWS = 20000    # nur Kandidaten > 20k Views weiterreichen
+# Kandidaten-Trichter bewusst breiter (20k -> 10k): mehr TikTok-Material in der
+# Analyse erhoeht die Chance auf klare Falschinfos jenseits von YouTube
+DISCOVERY_MIN_VIEWS = int(os.environ.get("RADAR_TIKTOK_DISCOVERY_MIN_VIEWS", "10000"))
 
 
 def discovery_aktiv():

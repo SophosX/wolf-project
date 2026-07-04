@@ -381,7 +381,9 @@ def _transkript_fuer_video(video_id, fehler):
         cmd = [
             "yt-dlp",
             "--write-auto-subs", "--write-subs",
-            "--sub-langs", "de.*",
+            # NUR Original-Deutsch — "de.*" zog auch Auto-Übersetzungen (de-ar, de-sq …)
+            # und vervielfachte die Requests gegen den 429-limitierten Endpunkt
+            "--sub-langs", "de,de-orig",
             "--sub-format", "vtt",
             "--skip-download",
             "--no-warnings", "--quiet",
@@ -408,6 +410,31 @@ def _transkript_fuer_video(video_id, fehler):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# Nach einem 429 des Untertitel-Endpunkts pausieren ALLE Untertitel-Versuche
+# fuer eine Weile (IP-basiertes Rate-Limit — sofortiges Weiterhaemmern verlaengert
+# nur die Sperre). Der Audio-Fallback der Transkription deckt die Zeit ab.
+_SUBS_COOLDOWN_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "daten", ".yt_subs_429_cooldown")
+SUBS_COOLDOWN_S = int(os.environ.get("RADAR_SUBS_COOLDOWN_S", "1800"))
+
+
+def _subs_cooldown_aktiv():
+    try:
+        alter = time.time() - os.path.getmtime(_SUBS_COOLDOWN_DATEI)
+        return alter < SUBS_COOLDOWN_S
+    except OSError:
+        return False
+
+
+def _subs_cooldown_setzen():
+    try:
+        os.makedirs(os.path.dirname(_SUBS_COOLDOWN_DATEI), exist_ok=True)
+        with open(_SUBS_COOLDOWN_DATEI, "w") as f:
+            f.write(str(int(time.time())))
+    except OSError:
+        pass
+
+
 def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
                      max_videos=TRANSKRIPT_MAX_VIDEOS):
     """
@@ -421,6 +448,13 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
             and (k.get("views") or 0) > min_views]
     ziel.sort(key=lambda k: -(k.get("views") or 0))
     ziel = ziel[:max_videos]
+
+    if ziel and _subs_cooldown_aktiv():
+        print("[youtube] Untertitel-Endpunkt im 429-Cooldown — %d Kandidaten gehen "
+              "direkt in den Audio-Fallback" % len(ziel))
+        for offen in ziel:
+            offen["transkript_429"] = True
+        return 0
 
     erfolgreich = 0
     for kand in ziel:

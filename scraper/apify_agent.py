@@ -108,42 +108,61 @@ def _item_zu_kandidat(it, handle_zu_name, quelle):
 
 def _sammle_profile(profil_handles, handle_zu_name, limit, quelle, kandidaten, fehler,
                     abdeckungs_check=True):
-    """Einen Satz IG-Profile über den Apify-Actor einsammeln (ein Actor-Lauf)."""
+    """Einen Satz IG-Profile über den Apify-Actor einsammeln.
+    Profile ohne Ergebnis werden EINMAL wiederholt — der Actor liefert nach
+    Kaltstarts vereinzelt transient leere Antworten (no_items)."""
     if not profil_handles:
         return
-    urls = ["https://www.instagram.com/%s/" % h for h in profil_handles]
-    try:
-        items = _run_sync(IG_ACTOR, {
-            "directUrls": urls,
+
+    def _abrufen(handles):
+        return _run_sync(IG_ACTOR, {
+            "directUrls": ["https://www.instagram.com/%s/" % h for h in handles],
             "resultsType": "posts",
             "resultsLimit": limit,
             "addParentData": True,
         })
+
+    gesehene_handles = set()
+    harte_fehler = set()  # Profile mit echtem Fehler-Item (not_found etc.) — kein Retry
+
+    def _verarbeiten(items, fehler_sammeln):
+        for it in items or []:
+            try:
+                if it.get("error"):
+                    quelle_url = it.get("url") or it.get("inputUrl") or ""
+                    wer = (it.get("username") or quelle_url.rstrip("/").split("/")[-1] or "?").lower()
+                    harte_fehler.add(wer)
+                    if fehler_sammeln:
+                        fehler.append("apify instagram @%s: %s" % (wer, it["error"]))
+                    continue
+                kandidat = _item_zu_kandidat(it, handle_zu_name, quelle)
+                if kandidat is None:
+                    continue
+                handle = (it.get("ownerUsername") or "").lower()
+                if handle:
+                    gesehene_handles.add(handle)
+                kandidaten.append(kandidat)
+            except Exception as e:
+                fehler.append("apify instagram item: %s" % e)
+
+    try:
+        _verarbeiten(_abrufen(profil_handles), fehler_sammeln=False)
     except Exception as e:
         fehler.append("apify instagram (%s): Lauf fehlgeschlagen: %s" % (quelle, e))
         return
 
-    gesehene_handles = set()
-    for it in items or []:
+    # Ein Retry NUR für still-leere Profile (transientes no_items)
+    fehlend = [h for h in profil_handles
+               if h.lower() not in gesehene_handles and h.lower() not in harte_fehler]
+    if fehlend:
+        time.sleep(5)
         try:
-            if it.get("error"):
-                # Fehler-Items tragen kein username-Feld — Profil aus der URL ableiten
-                quelle_url = it.get("url") or it.get("inputUrl") or ""
-                wer = it.get("username") or quelle_url.rstrip("/").split("/")[-1] or "?"
-                fehler.append("apify instagram @%s: %s" % (wer, it["error"]))
-                continue
-            kandidat = _item_zu_kandidat(it, handle_zu_name, quelle)
-            if kandidat is None:
-                continue
-            handle = (it.get("ownerUsername") or "").lower()
-            if handle:
-                gesehene_handles.add(handle)
-            kandidaten.append(kandidat)
+            _verarbeiten(_abrufen(fehlend), fehler_sammeln=True)
         except Exception as e:
-            fehler.append("apify instagram item: %s" % e)
+            fehler.append("apify instagram (%s) Retry: %s" % (quelle, e))
 
     if abdeckungs_check:
-        # Angefragte Profile, die weder Posts noch Fehler-Item lieferten
+        # Angefragte Profile, die auch nach dem Retry nichts lieferten
         for handle in profil_handles:
             h = handle.lower()
             if h not in gesehene_handles and not any(("@%s" % h) in f for f in fehler):

@@ -59,6 +59,48 @@ SLEEP_ZWISCHEN_VIDEOS_S = 3        # rate-schonend (TikTok blockt aggressive Cli
 
 _KEINE_SPRACHE = "KEINE_SPRACHE"
 
+# ---------------------------------------------------------------------------
+# Skip-Liste: Videos, die dauerhaft nicht transkribierbar sind (Foto-Posts,
+# Login-Wall, keine Sprache), werden nach MAX_VERSUCHE_PRO_VIDEO Anläufen
+# nicht mehr angefasst — sonst produziert JEDER Lauf dieselben Fehlerzeilen
+# im Agenten-Panel. Transiente Fehler (429, Timeouts, CDN) zählen NICHT.
+# ---------------------------------------------------------------------------
+
+SKIP_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "..", "daten", "transkription_skip.json")
+MAX_VERSUCHE_PRO_VIDEO = 2
+
+# Fehlermuster, die einen DAUERHAFTEN Zustand beschreiben (kein Retry sinnvoll)
+_DAUERHAFT_MUSTER = (
+    "No video formats found",          # TikTok-Foto-/Slideshow-Post
+    "empty media response",            # Instagram Login-Wall / geloeschter Post
+    "ohne Audio-Stream",               # Video ohne Tonspur
+    "Format ohne Audio-Stream",
+)
+
+
+def _lade_skip():
+    try:
+        with open(SKIP_DATEI, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _speichere_skip(skip):
+    try:
+        os.makedirs(os.path.dirname(SKIP_DATEI), exist_ok=True)
+        tmp = SKIP_DATEI + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(skip, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, SKIP_DATEI)
+    except OSError as fehler:
+        logger.debug("Skip-Liste nicht speicherbar: %s", fehler)
+
+
+def _ist_dauerhaft(meldungen):
+    return any(m in eintrag for eintrag in meldungen for m in _DAUERHAFT_MUSTER)
+
 
 # ---------------------------------------------------------------------------
 # Schritt 1: Audio beschaffen (yt-dlp oder direkte CDN-URL) -> kleines MP3
@@ -297,17 +339,33 @@ def transkribiere_kandidaten(kandidaten, fehler, max_videos=None,
         min_views_kurz = MIN_VIEWS_KURZVIDEO
     if min_views_yt is None:
         min_views_yt = MIN_VIEWS_YOUTUBE
-    ziel = [k for k in kandidaten
-            if _ist_transkriptions_kandidat(k, min_views_kurz, min_views_yt)]
+
+    skip = _lade_skip()
+    uebersprungen = 0
+    ziel = []
+    for k in kandidaten:
+        if not _ist_transkriptions_kandidat(k, min_views_kurz, min_views_yt):
+            continue
+        eintrag = skip.get(str(k.get("id")))
+        if eintrag and int(eintrag.get("versuche", 0)) >= MAX_VERSUCHE_PRO_VIDEO:
+            uebersprungen += 1
+            continue
+        ziel.append(k)
     ziel.sort(key=lambda k: -(k.get("views") or 0))
     ziel = ziel[:max_videos]
+    if uebersprungen:
+        print("[transkription] %d Videos dauerhaft übersprungen (Skip-Liste: "
+              "Foto-Post/Login-Wall/keine Sprache)" % uebersprungen)
     if not ziel:
         return 0
 
     erfolgreich = 0
+    skip_geaendert = False
     for kandidat in ziel:
-        kontext = "%s(%s)" % (kandidat.get("id", "?"), kandidat.get("plattform", "?"))
+        kid = str(kandidat.get("id", "?"))
+        kontext = "%s(%s)" % (kid, kandidat.get("plattform", "?"))
         tmp = tempfile.mkdtemp(prefix="radar_audio_")
+        fehler_vorher = len(fehler)
         try:
             mp3 = _audio_beschaffen(kandidat, tmp, fehler, kontext)
             if mp3:
@@ -315,11 +373,24 @@ def transkribiere_kandidaten(kandidaten, fehler, max_videos=None,
                 if text:
                     kandidat["transkript"] = text
                     erfolgreich += 1
-                    logger.info("Transkript %s: %d Zeichen (Audio).", kandidat.get("id"), len(text))
+                    logger.info("Transkript %s: %d Zeichen (Audio).", kid, len(text))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+        if not kandidat.get("transkript"):
+            neue_meldungen = fehler[fehler_vorher:]
+            # Dauerhafte Ursachen (Foto-Post, Login-Wall, kein Audio/keine Sprache)
+            # zaehlen — transiente (429, Timeout, Netz) nicht.
+            if _ist_dauerhaft(neue_meldungen) or not neue_meldungen:
+                eintrag = skip.setdefault(kid, {"versuche": 0, "grund": ""})
+                eintrag["versuche"] = int(eintrag.get("versuche", 0)) + 1
+                eintrag["grund"] = (neue_meldungen[-1][:160] if neue_meldungen
+                                    else "keine Sprache erkannt")
+                skip_geaendert = True
         time.sleep(SLEEP_ZWISCHEN_VIDEOS_S)
 
+    if skip_geaendert:
+        _speichere_skip(skip)
     print("[transkription] %d/%d Audio-Transkripte erfolgreich (%s)"
           % (erfolgreich, len(ziel),
              ", ".join(sorted(set(k.get("plattform", "?") for k in ziel)))))

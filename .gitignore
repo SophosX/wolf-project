@@ -24,3 +24,4 @@ __pycache__/
 .DS_Store
 *.log
 tsconfig.tsbuildinfo
+daten/.yt_subs_429_cooldown
