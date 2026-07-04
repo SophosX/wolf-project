@@ -1,24 +1,35 @@
-// Zugangsschutz: httpOnly-Cookie muss den Zugangscode enthalten.
-// Einstieg per ?code=XYZ an beliebiger URL oder Formular auf /login.
-// Code kommt aus ENV RADAR_ZUGANGSCODE (Dev-Default: "radar").
+// Zugangsschutz (OPT-IN): nur aktiv, wenn ENV RADAR_ZUGANGSCODE gesetzt ist.
+// Ohne gesetzten Code ist die App offen — Chris landet direkt im Dashboard.
+// Mit Code: httpOnly-Cookie muss den Zugangscode enthalten; Einstieg per
+// ?code=XYZ an beliebiger URL oder Formular auf /login.
 
 import { NextRequest, NextResponse } from "next/server";
 
 const COOKIE_NAME = "radar_zugang";
 
 function zugangscode(): string {
-  return process.env.RADAR_ZUGANGSCODE || "radar";
+  return (process.env.RADAR_ZUGANGSCODE || "").trim();
 }
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const code = zugangscode();
+
+  // Kein Code konfiguriert → alles offen; /login leitet direkt ins Dashboard
+  if (!code) {
+    if (pathname === "/login") {
+      const ziel = req.nextUrl.clone();
+      ziel.pathname = "/";
+      ziel.search = "";
+      return NextResponse.redirect(ziel);
+    }
+    return NextResponse.next();
+  }
 
   // Login-Seite und Login-API sind frei erreichbar
   if (pathname === "/login" || pathname === "/api/login") {
     return NextResponse.next();
   }
-
-  const code = zugangscode();
 
   // ?code=XYZ: Cookie setzen und URL bereinigen
   const urlCode = req.nextUrl.searchParams.get("code");

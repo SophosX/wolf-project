@@ -35,14 +35,14 @@ VERCEL_TOKEN=<token> vercel link --yes
 VERCEL_TOKEN=<token> vercel env add SUPABASE_URL production        # Project-URL
 VERCEL_TOKEN=<token> vercel env add SUPABASE_SERVICE_KEY production
 VERCEL_TOKEN=<token> vercel env add GEMINI_API_KEY production
-VERCEL_TOKEN=<token> vercel env add RADAR_ZUGANGSCODE production   # z.B. "wolfradar2026"
+VERCEL_TOKEN=<token> vercel env add RADAR_ZUGANGSCODE production   # OPTIONAL — ungesetzt ist die App offen; z.B. "wolfradar2026"
 VERCEL_TOKEN=<token> vercel env add DATEN_MODUS production         # "supabase"
 VERCEL_TOKEN=<token> vercel --prod
 ```
 
 ## 4. Abnahme-Checks nach Deploy
 
-- [ ] `https://<app>.vercel.app/login` lädt, Zugangscode funktioniert
+- [ ] `https://<app>.vercel.app/` lädt direkt ins Dashboard (bzw. Zugangscode, falls gesetzt)
 - [ ] Inbox zeigt migrierte Funde
 - [ ] Annehmen → Skript-Paket sichtbar; Feedback persistiert (Supabase Table Editor prüfen)
 - [ ] /api/faktencheck live (Gemini erreichbar von Vercel)

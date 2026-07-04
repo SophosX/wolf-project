@@ -12,14 +12,15 @@ cp .env.local.beispiel .env.local   # Keys eintragen (siehe unten)
 npm run dev                          # → http://localhost:3000
 ```
 
-Zugang: Zugangscode eingeben (ENV `RADAR_ZUGANGSCODE`, Dev-Default: `radar`)
-oder eine beliebige URL mit `?code=radar` öffnen.
+Zugang: standardmäßig **offen** — die App startet direkt im Dashboard.
+Optional per ENV `RADAR_ZUGANGSCODE=<code>` hinter einen Zugangscode legen
+(Einstieg dann via `/login` oder `?code=<code>`).
 
 ## ENV (.env.local)
 
 | Variable | Zweck |
 |---|---|
-| `RADAR_ZUGANGSCODE` | App-Zugang (Default `radar`) |
+| `RADAR_ZUGANGSCODE` | optionaler Zugangsschutz — ungesetzt = App offen |
 | `GEMINI_API_KEY` | Analyse, Skripte, Faktencheck, Audio-Transkription |
 | `RADAR_MODELL_QUALITAET` | Modell für Verdict/Faktencheck/Skripte (Default `gemini-2.5-pro`) |
 | `RADAR_MODELL_SCHNELL` | Modell für Vorfilter/Extraktion (Default `gemini-2.5-flash`) |
@@ -83,7 +84,7 @@ Abschalten: `RADAR_TIKTOK_DISCOVERY=0`.
 | `/archiv` | Abgelehnt (mit Grund) + Archiv |
 | `/agenten` | Agenten-Läufe, Funde je Quelle, Fehler rot, Beobachtungsliste |
 
-## API (alle hinter Zugangscode)
+## API (hinter Zugangscode, falls `RADAR_ZUGANGSCODE` gesetzt)
 
 `GET /api/videos` · `POST /api/feedback` · `POST /api/skript` · `POST /api/faktencheck` ·
 `GET /api/agenten` · `GET /api/export?status=angenommen&format=md|csv`
