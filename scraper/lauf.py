@@ -452,6 +452,10 @@ def main():
     except Exception as e:
         print("[lauf] WARNUNG: extra_queries nicht ladbar: %s" % e)
         extra_queries = []
+    if extra_queries:
+        status.schritt("Deine Vorschlaege fliessen in die Suche ein: %s"
+                       % ", ".join("„%s“" % q for q in extra_queries[:4]),
+                       typ="erfolg")
 
     agenten = {
         "youtube": lambda: youtube_agent.sammle(watchlist, extra_queries=extra_queries),

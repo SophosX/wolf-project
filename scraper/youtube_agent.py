@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+import status
 from mythen_katalog import SUCHQUERIES
 
 API_BASIS = "https://www.googleapis.com/youtube/v3"
@@ -222,6 +223,11 @@ def claim_suche(fehler, queries=None):
 
     print("[youtube] Claim-Suche: %d Queries, %d search-Calls, %d eindeutige Video-IDs"
           % (len(queries), such_calls, len(gefundene_ids)))
+    status.schritt("YouTube: %d Suchanfragen ausgefuehrt (%s%s) — %d Videos gefunden"
+                   % (len(queries),
+                      ", ".join("„%s“" % q for q in list(queries)[:3]),
+                      " …" if len(queries) > 3 else "",
+                      len(gefundene_ids)))
 
     details = _videos_details(gefundene_ids, fehler)
     follower = _kanal_follower(
@@ -320,6 +326,8 @@ def watchlist_uploads(watchlist_eintraege, fehler):
 
     print("[youtube] Watchlist: %d Kanaele verifiziert, %d Uploads der letzten %d Tage"
           % (len(kanal_info), len(video_ids), WATCHLIST_TAGE))
+    status.schritt("Beobachtungsliste: %d neue Uploads von %d beobachteten Kanaelen geprueft"
+                   % (len(video_ids), len(kanal_info)))
 
     details = _videos_details(video_ids, fehler)
     kandidaten = []

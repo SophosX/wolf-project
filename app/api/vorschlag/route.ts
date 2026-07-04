@@ -1,14 +1,16 @@
-// POST /api/vorschlag {text} — Chris' Freitext-Vorschlag an den Radar.
-// Gemini leitet strukturiert ab (Suchqueries, Kanäle, Themen), die Ableitungen
-// fließen sofort in den Suchalgorithmus: Queries in die YouTube-Rotation (7 Tage),
-// Kanäle auf die Beobachtungsliste, Themen-Boosts ins Ranking.
-// GET /api/vorschlag — bisherige Vorschläge mit Ableitungen.
+// POST   /api/vorschlag {text} — Chris' Freitext-Vorschlag an den Radar.
+//        Gemini leitet strukturiert ab (Suchqueries, Kanäle, Themen), die Ableitungen
+//        fließen sofort in den Suchalgorithmus: Queries in die YouTube-Rotation (7 Tage),
+//        Kanäle auf die Beobachtungsliste, Themen-Boosts ins Ranking.
+// GET    /api/vorschlag — bisherige Vorschläge mit Ableitungen.
+// DELETE /api/vorschlag {zeit} — Vorschlag entfernen; seine Suchqueries stoppen sofort.
 
 import { NextRequest, NextResponse } from "next/server";
 import { rufeGeminiJson } from "@/lib/gemini";
 import { setzeFolgen } from "@/lib/personen";
 import {
   holeVorschlaege,
+  loescheVorschlag,
   speichereVorschlag,
   type Vorschlag,
   type VorschlagAbleitung,
@@ -112,6 +114,26 @@ export async function POST(req: NextRequest) {
     console.error("[api/vorschlag POST]", e);
     return NextResponse.json(
       { fehler: e instanceof Error ? e.message : "Vorschlag konnte nicht verarbeitet werden" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { zeit } = (await req.json()) || {};
+    if (!zeit) {
+      return NextResponse.json({ fehler: "zeit erforderlich" }, { status: 400 });
+    }
+    const geloescht = await loescheVorschlag(String(zeit));
+    if (!geloescht) {
+      return NextResponse.json({ fehler: "Vorschlag nicht gefunden" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("[api/vorschlag DELETE]", e);
+    return NextResponse.json(
+      { fehler: "Vorschlag konnte nicht entfernt werden" },
       { status: 500 }
     );
   }

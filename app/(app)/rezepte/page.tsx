@@ -4,6 +4,7 @@
 
 import { holeRezepte } from "@/lib/daten";
 import RezeptListe from "@/components/RezeptListe";
+import RezeptVorschlagBox from "@/components/RezeptVorschlagBox";
 import type { Rezept } from "@/lib/typen";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export default async function RezepteSeite(props: {
         High Protein, kalorienbewusst, simpel. Kommentare fließen ins Lernen ein.
       </div>
       {ladefehler && <div className="hinweis-fehler">⚠ {ladefehler}</div>}
+      <RezeptVorschlagBox />
       <RezeptListe
         vorschlaege={vorschlaege}
         gemerkte={gemerkte}

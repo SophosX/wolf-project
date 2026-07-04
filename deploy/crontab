@@ -3,6 +3,10 @@
 # der tägliche Instagram-Job wartet blockierend, damit er nie ausfällt.
 0 */4 * * * flock -n /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
 30 5 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur instagram && python3 -u lauf.py --transkribiere'
+# Rezepte-Radar: taeglich neue Community-Rezepte suchen + Chris-Fit bewerten.
+# 08:30 UTC = kurz NACH dem YouTube-Quota-Reset (Mitternacht Pacific Time),
+# damit die Rezept-Suche nie in ein leeres Tages-Kontingent laeuft.
+30 8 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u rezepte_agent.py'
 # "Jetzt suchen" aus der App: /agenten legt daten/.lauf_anfrage an; hier minuetlich
 # geprueft. Flag wird erst NACH Lock-Erhalt geloescht — laeuft gerade ein Lauf,
 # bleibt die Anfrage liegen und startet direkt im Anschluss.

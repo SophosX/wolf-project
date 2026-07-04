@@ -14,7 +14,8 @@ import {
 export const dynamic = "force-dynamic";
 
 /** Nächster automatischer Lauf laut deploy/crontab (UTC): alle 4 h zur vollen
- *  Stunde (0,4,8,…,20) plus täglich 05:30 (Instagram + Transkripte). */
+ *  Stunde (0,4,8,…,20), täglich 05:30 (Instagram + Transkripte) und
+ *  täglich 08:30 (Rezepte-Radar, nach dem YouTube-Quota-Reset). */
 function naechsterCronLauf(): string {
   const jetzt = new Date();
   const kandidaten: Date[] = [];
@@ -24,10 +25,12 @@ function naechsterCronLauf(): string {
     if (h >= 24) t.setUTCDate(t.getUTCDate() + 1);
     if (t > jetzt) kandidaten.push(t);
   }
-  const ig = new Date(jetzt);
-  ig.setUTCHours(5, 30, 0, 0);
-  if (ig <= jetzt) ig.setUTCDate(ig.getUTCDate() + 1);
-  kandidaten.push(ig);
+  for (const [stunde, minute] of [[5, 30], [8, 30]] as const) {
+    const t = new Date(jetzt);
+    t.setUTCHours(stunde, minute, 0, 0);
+    if (t <= jetzt) t.setUTCDate(t.getUTCDate() + 1);
+    kandidaten.push(t);
+  }
   kandidaten.sort((a, b) => a.getTime() - b.getTime());
   return kandidaten[0].toISOString();
 }

@@ -156,6 +156,22 @@ def lade_extra_queries(maximal=4):
     return aktiv[:maximal]
 
 
+def lade_rezept_extra_queries(maximal=4):
+    """Aktive Zusatz-Suchqueries fuer den REZEPTE-Radar aus Chris' Vorschlaegen
+    (gleicher Mechanismus wie lade_extra_queries, eigener Schluessel)."""
+    eintraege = []
+    if daten_modus() == "supabase":
+        zeilen = _supabase_get("einstellungen", {"select": "value", "key": "eq.rezept_extra_queries"})
+        if zeilen and isinstance(zeilen[0].get("value"), list):
+            eintraege = zeilen[0]["value"]
+    else:
+        eintraege = (_lade_json(VORSCHLAEGE_DATEI, {}) or {}).get("rezept_extra_queries", [])
+    jetzt = jetzt_iso()
+    aktiv = [e.get("query", "").strip() for e in eintraege
+             if e.get("query") and str(e.get("bis", "")) > jetzt]
+    return aktiv[:maximal]
+
+
 def lade_fuer_neubewertung():
     """Videos fuer die Bestands-Neubewertung: analysiert (claim vorhanden), aber noch
     ohne Websuche-Verifikation (claim.websuche fehlt = alte Pipeline), und nur solche,

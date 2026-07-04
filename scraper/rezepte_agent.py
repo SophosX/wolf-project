@@ -35,6 +35,7 @@ if SCRAPER_DIR not in sys.path:
 
 import analyse
 import speicher
+import status
 import youtube_agent
 
 REZEPTE_DATEI = os.path.join(speicher.DATEN_DIR, "rezepte.json")
@@ -101,12 +102,24 @@ def _roh_rezept(video_id, snippet, statistik, content):
 
 
 def rezept_suche(fehler):
-    """8 Rezept-Queries, letzte 90 Tage, order=viewCount -> rohe Rezept-Dicts."""
+    """Rezept-Queries (Chris' Vorschlaege zuerst, dann die 8 Basis-Queries),
+    letzte 90 Tage, order=viewCount -> rohe Rezept-Dicts."""
     published_after = youtube_agent._iso_vor_tagen(SUCHE_TAGE)
     gefundene_ids = []
     schon_gesehen = set()
 
-    for query in REZEPT_QUERIES:
+    # Chris' aktive Rezept-Vorschlaege laufen VOR den Basis-Queries mit
+    try:
+        extra = speicher.lade_rezept_extra_queries()
+    except Exception as e:
+        extra = []
+        fehler.append("rezepte extra-queries: %s" % e)
+    if extra:
+        status.schritt("Deine Rezept-Vorschlaege fliessen ein: %s"
+                       % ", ".join("„%s“" % q for q in extra), typ="erfolg")
+    queries = list(dict.fromkeys(extra + REZEPT_QUERIES))
+
+    for query in queries:
         antwort = youtube_agent._api_get("search", {
             "part": "snippet",
             "q": query,
@@ -126,7 +139,9 @@ def rezept_suche(fehler):
                 gefundene_ids.append(vid)
 
     print("[rezepte] Suche: %d Queries, %d eindeutige Video-IDs"
-          % (len(REZEPT_QUERIES), len(gefundene_ids)))
+          % (len(queries), len(gefundene_ids)))
+    status.schritt("Rezepte: %d Suchanfragen ausgefuehrt — %d Videos gefunden"
+                   % (len(queries), len(gefundene_ids)))
 
     details = youtube_agent._videos_details(gefundene_ids, fehler)
     rezepte = []
@@ -355,9 +370,12 @@ def main():
     gefunden, analysiert, geflaggt = 0, 0, 0
     neu, aktualisiert = 0, 0
 
+    status.start("rezepte")
     try:
+        status.phase("Neue Rezepte auf YouTube suchen …")
         kandidaten = rezept_suche(fehler)
         gefunden = len(kandidaten)
+        status.zaehler(gefunden=gefunden)
 
         bestand_ids = set(r.get("id") for r in lade_rezepte())
 
@@ -376,7 +394,10 @@ def main():
               % (gefunden, len(bekannte), zu_wenig, MINDEST_VIEWS, len(neue)))
 
         # Gemini-Fit-Bewertung
+        if neue:
+            status.phase("KI bewertet %d Rezepte auf Chris-Fit …" % len(neue))
         analysiert = bewerte_fit(neue, fehler) if neue else 0
+        status.zaehler(analysiert=analysiert)
 
         # Nur Chris-Fit >= Schwelle speichern; Score = 0.5*Resonanz + 0.5*Fit
         passende = []
@@ -391,6 +412,7 @@ def main():
         passende.sort(key=lambda r: -(r.get("score") or 0))
 
         neu, aktualisiert = speichere_rezepte(passende + bekannte)
+        status.zaehler(neu=neu, geflaggt=geflaggt)
     except Exception as e:
         fehler.append("rezepte: Lauf abgebrochen: %s" % e)
         print("[rezepte] FEHLER: %s" % e)
@@ -410,6 +432,9 @@ def main():
         speicher.speichere_agent_run(protokoll)
     except Exception as e:
         print("[rezepte] FEHLER beim Protokoll-Schreiben: %s" % e)
+
+    status.ende("Rezepte-Lauf abgeschlossen: %d neue Rezepte (Chris-Fit), %d gesichtet"
+                % (neu, gefunden))
 
     print("")
     print("=" * 62)
@@ -436,4 +461,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Absturz-Schutz: Status nie auf "aktiv" haengen lassen (no-op nach
+        # regulaerem Ende — status.ende() raeumt bereits auf).
+        status.ende("Rezepte-Lauf unerwartet beendet")

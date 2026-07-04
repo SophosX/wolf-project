@@ -1,20 +1,21 @@
 "use client";
 
-// Vorschlags-Box: Chris schreibt dem Radar in Freitext, was er sehen will —
-// der Suchalgorithmus adaptiert sich sofort (Queries, Watchlist, Themen-Boosts).
+// Rezept-Vorschlags-Box: Chris sagt dem Rezepte-Radar in Freitext, wonach er
+// suchen soll — die abgeleiteten Suchanfragen laufen 7 Tage in der täglichen
+// Rezept-Suche mit und sind hier sichtbar & jederzeit entfernbar.
 
 import { useEffect, useState } from "react";
-import type { Vorschlag } from "@/lib/vorschlaege";
+import type { RezeptVorschlag } from "@/lib/vorschlaege";
 
-export default function VorschlagBox() {
+export default function RezeptVorschlagBox() {
   const [text, setText] = useState("");
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
-  const [vorschlaege, setVorschlaege] = useState<Vorschlag[]>([]);
+  const [vorschlaege, setVorschlaege] = useState<RezeptVorschlag[]>([]);
 
   async function laden() {
     try {
-      const res = await fetch("/api/vorschlag");
+      const res = await fetch("/api/rezepte/vorschlag");
       const daten = await res.json();
       setVorschlaege(daten.vorschlaege || []);
     } catch {
@@ -26,25 +27,10 @@ export default function VorschlagBox() {
     laden();
   }, []);
 
-  /** Suchqueries eines Vorschlags laufen 7 Tage (QUERY_LAUFZEIT_TAGE serverseitig). */
-  function queryRestTage(v: Vorschlag): number {
+  /** Suchqueries laufen 7 Tage (QUERY_LAUFZEIT_TAGE serverseitig). */
+  function restTage(v: RezeptVorschlag): number {
     const bis = new Date(v.zeit).getTime() + 7 * 86_400_000;
     return Math.max(0, Math.ceil((bis - Date.now()) / 86_400_000));
-  }
-
-  async function entfernen(zeit: string) {
-    // Optimistisch entfernen; bei Fehler neu laden
-    setVorschlaege((alt) => alt.filter((v) => v.zeit !== zeit));
-    try {
-      const res = await fetch("/api/vorschlag", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zeit }),
-      });
-      if (!res.ok) throw new Error();
-    } catch {
-      laden();
-    }
   }
 
   async function senden() {
@@ -52,7 +38,7 @@ export default function VorschlagBox() {
     setLaeuft(true);
     setFehler(null);
     try {
-      const res = await fetch("/api/vorschlag", {
+      const res = await fetch("/api/rezepte/vorschlag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text.trim() }),
@@ -68,19 +54,33 @@ export default function VorschlagBox() {
     }
   }
 
+  async function entfernen(zeit: string) {
+    setVorschlaege((alt) => alt.filter((v) => v.zeit !== zeit));
+    try {
+      const res = await fetch("/api/rezepte/vorschlag", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zeit }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      laden();
+    }
+  }
+
   return (
     <section className="vorschlag-box">
-      <h2 className="abschnitt-titel">💡 Dein Vorschlag an den Radar</h2>
+      <h2 className="abschnitt-titel">🍳 Dein Rezept-Wunsch an den Radar</h2>
       <p style={{ color: "var(--text-dim)", fontSize: 14, marginTop: 4 }}>
-        Sag dem Radar in einem Satz, was er suchen oder beobachten soll — z.&nbsp;B.
-        „Schau dir die Kreatin-Mythen an“ oder „Beobachte den Kanal XY auf TikTok“.
-        Suchanfragen, Beobachtungsliste und Themen-Gewichtung passen sich sofort an.
+        Sag dem Radar, welche Rezepte er suchen soll — z.&nbsp;B. „High-Protein
+        Frühstücksrezepte“ oder „kalorienarme Pasta-Alternativen“. Die Suche läuft
+        7&nbsp;Tage im täglichen Rezepte-Lauf mit; mit ✕ beendest du sie sofort.
       </p>
       <div className="zeile" style={{ marginTop: 10, gap: 8, display: "flex" }}>
         <textarea
           rows={2}
           style={{ flex: 1 }}
-          placeholder="Was soll der Radar für dich finden?"
+          placeholder="Wonach soll der Rezepte-Radar suchen?"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -99,17 +99,14 @@ export default function VorschlagBox() {
       {vorschlaege.length > 0 && (
         <ul className="vorschlag-liste">
           {vorschlaege.slice(0, 6).map((v) => {
-            const restTage = queryRestTage(v);
-            const hatQueries = v.ableitung.queries.length > 0;
+            const tage = restTage(v);
             return (
               <li key={v.zeit}>
                 <div className="vorschlag-kopf">
                   <div className="vorschlag-text">„{v.text}“</div>
-                  {hatQueries && (
-                    <span className={"vorschlag-badge" + (restTage > 0 ? " aktiv" : "")}>
-                      {restTage > 0 ? `Suche aktiv · noch ${restTage} Tag${restTage === 1 ? "" : "e"}` : "Suche beendet"}
-                    </span>
-                  )}
+                  <span className={"vorschlag-badge" + (tage > 0 ? " aktiv" : "")}>
+                    {tage > 0 ? `Suche aktiv · noch ${tage} Tag${tage === 1 ? "" : "e"}` : "Suche beendet"}
+                  </span>
                   <button
                     className="vorschlag-entfernen"
                     title="Vorschlag entfernen — die Suche danach stoppt sofort"
@@ -119,13 +116,7 @@ export default function VorschlagBox() {
                   </button>
                 </div>
                 <div className="vorschlag-ableitung">
-                  ↳ {v.ableitung.notiz}
-                  {hatQueries && (
-                    <span> · Suchen: {v.ableitung.queries.map((q) => "„" + q + "“").join(", ")}</span>
-                  )}
-                  {v.ableitung.kanaele.length > 0 && (
-                    <span> · Beobachtet (dauerhaft): {v.ableitung.kanaele.map((k) => k.name).join(", ")}</span>
-                  )}
+                  ↳ Suchen: {v.queries.map((q) => "„" + q + "“").join(", ")}
                 </div>
               </li>
             );

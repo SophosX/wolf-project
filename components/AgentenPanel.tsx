@@ -13,6 +13,7 @@ const QUELLE_LABEL: Record<string, string> = {
   youtube: "YouTube",
   tiktok: "TikTok",
   instagram: "Instagram",
+  rezepte: "Rezepte",
   transkription: "Transkripte",
   nachanalyse: "Nach-Analyse",
   neubewertung: "Neubewertung",

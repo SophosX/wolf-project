@@ -193,6 +193,18 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
 .vorschlag-liste li { border-top: 1px solid var(--linie); padding: 8px 0; }
 .vorschlag-text { font-size: 14px; font-weight: 600; }
 .vorschlag-ableitung { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+.vorschlag-kopf { display: flex; align-items: baseline; gap: 8px; }
+.vorschlag-kopf .vorschlag-text { flex: 1; min-width: 0; }
+.vorschlag-badge {
+  flex: none; font-size: 11.5px; color: var(--text-dim);
+  border: 1px solid var(--linie); border-radius: 999px; padding: 1px 9px;
+}
+.vorschlag-badge.aktiv { color: var(--gruen); border-color: rgba(61, 220, 132, 0.4); }
+.vorschlag-entfernen {
+  flex: none; background: none; border: none; color: var(--text-dim);
+  cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 6px;
+}
+.vorschlag-entfernen:hover { color: var(--rot); background: var(--flaeche-hell); }
 
 /* Belege/Quellen als nummerierte, klickbare Pills (Karte, Skripte, Faktencheck) */
 .quellen-pills { margin-top: 8px; }
