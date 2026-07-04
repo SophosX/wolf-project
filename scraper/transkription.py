@@ -164,6 +164,10 @@ def _audio_von_direkter_url(video_url, tmp, fehler, kontext):
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         fehler.append("transkription %s: CDN-Download: %s" % (kontext, str(e)[:160]))
         return None
+    if not _hat_audio_stream(roh):
+        # Foto-Post/kaputter Download — kein Audio ist kein Pipeline-Fehler
+        logger.info("Transkription %s: CDN-Datei ohne Audio-Stream — übersprungen.", kontext)
+        return None
     mp3 = os.path.join(tmp, "audio.mp3")
     if not _zu_mono_mp3(roh, mp3, fehler, kontext):
         return None
