@@ -304,6 +304,64 @@ def speichere_videos(kandidaten):
     return neu, aktualisiert
 
 
+def _normalisiere_aussage(text):
+    """Aussage fuer Aehnlichkeitsvergleich vereinheitlichen (klein, ohne
+    Satzzeichen/Mehrfach-Leerzeichen)."""
+    import re
+    return re.sub(r"\s+", " ", re.sub(r"[^\wäöüß ]", " ", (text or "").lower())).strip()
+
+
+def markiere_dubletten(schwelle=0.85):
+    """
+    Fast-Dubletten zusammenfassen: Wenn DERSELBE Kanal mehrere geflaggte Videos
+    (Status inbox/strittig) mit sehr aehnlicher Kernaussage hat, bleibt nur das
+    reichweitenstaerkste in der Inbox — die anderen wandern nach 'archiv' mit
+    Verweis 'dublette_von'. So sieht Christian nicht zweimal denselben Claim
+    desselben Creators. Vergleich nur INNERHALB eines Kanals (verschiedene
+    Creators mit gleichem Mythos bleiben getrennte, legitime Funde).
+    Rueckgabe: Anzahl als Dublette archivierter Videos.
+    """
+    from difflib import SequenceMatcher
+
+    if daten_modus() == "supabase":
+        return 0  # (Supabase-Modus hier nicht aktiv)
+
+    with _videos_schreib_lock():
+        bestand = _lade_json(VIDEOS_DATEI, [])
+        kandidaten = [v for v in bestand if v.get("status") in ("inbox", "strittig")
+                      and (v.get("claim") or {}).get("aussage")]
+        # nach Kanal gruppieren (kanal_id bevorzugt, sonst Name)
+        nach_kanal = {}
+        for v in kandidaten:
+            schluessel = v.get("kanal_id") or v.get("kanal") or "?"
+            nach_kanal.setdefault(schluessel, []).append(v)
+
+        archiviert = 0
+        for gruppe in nach_kanal.values():
+            if len(gruppe) < 2:
+                continue
+            # staerkstes zuerst -> wird immer Behalter eines Clusters
+            gruppe.sort(key=lambda v: (v.get("views") or 0), reverse=True)
+            behalten = []  # (behalter, normalisierte_aussage)
+            for v in gruppe:
+                norm = _normalisiere_aussage((v["claim"] or {}).get("aussage"))
+                treffer = None
+                for behalter, b_norm in behalten:
+                    if SequenceMatcher(None, norm, b_norm).ratio() >= schwelle:
+                        treffer = behalter
+                        break
+                if treffer is None:
+                    behalten.append((v, norm))
+                else:
+                    v["status"] = "archiv"
+                    v["dublette_von"] = treffer.get("id")
+                    archiviert += 1
+
+        if archiviert:
+            _schreibe_json_atomar(VIDEOS_DATEI, bestand)
+    return archiviert
+
+
 def speichere_agent_run(protokoll):
     """Ein agent_run-Protokoll anhaengen: {zeit, quelle, gefunden, neu, analysiert, geflaggt, fehler, dauer_s}"""
     protokoll.setdefault("zeit", jetzt_iso())

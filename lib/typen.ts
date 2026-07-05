@@ -66,6 +66,9 @@ export interface Video {
   status: Status;
   score: number; // 0-100
   scores: { reichweite: number; relevanz: number; tauglichkeit: number };
+  // Gesetzt, wenn dieses Video als Fast-Dublette eines anderen (gleicher Creator,
+  // sehr ähnliche Aussage) nach 'archiv' verschoben wurde — verweist auf den Behalter.
+  dublette_von?: string;
   // null = Scraper hat das Video gesammelt, aber die Analyse lief noch nicht
   claim: Claim | null;
   skripte: Skript[];

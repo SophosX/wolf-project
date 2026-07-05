@@ -607,6 +607,16 @@ def main():
             print("[lauf] FEHLER beim Protokoll-Schreiben (%s): %s" % (quelle, e))
         zusammenfassung.append(protokoll)
 
+    # Fast-Dubletten desselben Creators zusammenfassen (nur eins bleibt in der Inbox)
+    try:
+        dubletten = speicher.markiere_dubletten()
+        if dubletten:
+            print("[lauf] %d Fast-Dublette(n) nach 'archiv' verschoben" % dubletten)
+            status.schritt("%d fast identische Videos desselben Creators "
+                           "zusammengefasst" % dubletten)
+    except Exception as e:
+        print("[lauf] WARNUNG: Dubletten-Erkennung fehlgeschlagen: %s" % e)
+
     # ---------------- Konsolen-Summary ----------------
     print("")
     print("=" * 62)
