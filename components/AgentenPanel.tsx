@@ -113,6 +113,14 @@ export default function AgentenPanel() {
     }
   }
 
+  // Letzte YouTube-Suche mit Pro-Suchbegriff-Aufschlüsselung (Transparenz)
+  const letzteSuche = runs.find(
+    (r) => r.quelle === "youtube" && (r.such_protokoll || []).length > 0
+  );
+  const suchProtokoll = [...(letzteSuche?.such_protokoll || [])].sort(
+    (a, b) => b.gefunden - a.gefunden
+  );
+
   return (
     <>
       {/* ---- Status-Karte ---- */}
@@ -199,6 +207,33 @@ export default function AgentenPanel() {
           </>
         )}
       </div>
+
+      {/* ---- Was die letzte Suche ergab (pro Suchbegriff) ---- */}
+      {suchProtokoll.length > 0 && (
+        <>
+          <h2 className="abschnitt-titel">Was die letzte Suche ergab</h2>
+          <p className="dim" style={{ margin: "0 0 10px" }}>
+            {letzteSuche && <>{relativeZeit(letzteSuche.zeit)} · </>}
+            {suchProtokoll.length} Suchbegriffe auf YouTube durchsucht ·{" "}
+            {suchProtokoll.reduce((s, p) => s + p.gefunden, 0)} Videos gesichtet
+          </p>
+          <div className="such-protokoll">
+            {suchProtokoll.map((p, i) => (
+              <span
+                key={p.query + i}
+                className={"such-chip" + (p.gefunden > 0 ? "" : " leer")}
+                title={p.fehler ? "Suche gestört" : `${p.gefunden} Treffer`}
+              >
+                <span className="such-chip-q">
+                  {p.fehler ? "⚠ " : ""}
+                  {p.query}
+                </span>
+                <span className="such-chip-n">{p.gefunden}</span>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* ---- Funde je Quelle (wertorientiert, ohne Fehler-Dump) ---- */}
       <div className="agenten-gitter">

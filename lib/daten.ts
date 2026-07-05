@@ -236,8 +236,11 @@ export async function holeAgentRuns(): Promise<AgentRun[]> {
 // ---------------------------------------------------------------------------
 
 const LAUF_ANFRAGE_PFAD = path.join(DATEN_DIR, ".lauf_anfrage");
-/** Läufe, deren Status älter ist, gelten als verwaist (Absturz) — nicht "aktiv" zeigen. */
-const STATUS_STALE_MS = 2 * 3600 * 1000;
+/** Läufe, deren Status älter ist, gelten als verwaist (Absturz) — nicht "aktiv"
+ *  zeigen. Kurz gewählt (15 min): ein regulärer youtube+tiktok-Lauf dauert
+ *  wenige Minuten; ein "aktiv"-Status, der länger steht, ist abgestürzt und darf
+ *  nicht stundenlang "Radar arbeitet" vortäuschen. */
+const STATUS_STALE_MS = 15 * 60 * 1000;
 
 /** Live-Status des Scrapers; null wenn noch nie ein Lauf lief (oder Supabase-Modus). */
 export async function holeAgentStatus(): Promise<AgentStatus | null> {

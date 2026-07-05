@@ -10,30 +10,9 @@ import {
   holeAgentStatus,
   laufAngefragt,
 } from "@/lib/daten";
+import { naechsteVideoSuche, naechsterLauf } from "@/lib/zeitplan";
 
 export const dynamic = "force-dynamic";
-
-/** Nächster automatischer Lauf laut deploy/crontab (UTC): alle 4 h zur vollen
- *  Stunde (0,4,8,…,20), täglich 05:30 (Instagram + Transkripte) und
- *  täglich 08:30 (Rezepte-Radar, nach dem YouTube-Quota-Reset). */
-function naechsterCronLauf(): string {
-  const jetzt = new Date();
-  const kandidaten: Date[] = [];
-  for (let h = 0; h <= 24; h += 4) {
-    const t = new Date(jetzt);
-    t.setUTCHours(h % 24, 0, 0, 0);
-    if (h >= 24) t.setUTCDate(t.getUTCDate() + 1);
-    if (t > jetzt) kandidaten.push(t);
-  }
-  for (const [stunde, minute] of [[5, 30], [8, 30]] as const) {
-    const t = new Date(jetzt);
-    t.setUTCHours(stunde, minute, 0, 0);
-    if (t <= jetzt) t.setUTCDate(t.getUTCDate() + 1);
-    kandidaten.push(t);
-  }
-  kandidaten.sort((a, b) => a.getTime() - b.getTime());
-  return kandidaten[0].toISOString();
-}
 
 export async function GET() {
   try {
@@ -46,7 +25,8 @@ export async function GET() {
       status,
       angefragt,
       runs: runs.slice(0, 30),
-      naechsterLauf: naechsterCronLauf(),
+      naechsterLauf: naechsterLauf().toISOString(),
+      naechsteVideoSuche: naechsteVideoSuche().toISOString(),
     });
   } catch (e) {
     console.error("[api/agenten GET]", e);

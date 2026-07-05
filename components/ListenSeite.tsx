@@ -6,7 +6,7 @@ import { istAufWatchlist } from "@/lib/watchlist";
 import type { Plattform, Status } from "@/lib/typen";
 import type { Seite, VideoAnzeige } from "./VideoKarte";
 import FilterLeiste from "./FilterLeiste";
-import NachschubLeiste from "./NachschubLeiste";
+import SuchStatusLeiste from "./SuchStatusLeiste";
 import VideoListe from "./VideoListe";
 
 export interface SuchParams {
@@ -62,7 +62,7 @@ export default async function ListenSeite({
         zeitraum={zeitraum}
         themen={themen}
       />
-      {seite === "inbox" && <NachschubLeiste />}
+      {seite === "inbox" && <SuchStatusLeiste />}
       {ladefehler && <div className="hinweis-fehler">⚠ {ladefehler}</div>}
       <VideoListe videos={videos} seite={seite} leerText={leerText} />
     </>

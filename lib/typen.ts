@@ -61,6 +61,8 @@ export interface Video {
   transkript: string | null;
   gefunden_am: string; // ISO
   quelle: "claim_suche" | "watchlist" | "discovery";
+  // Suchbegriff, der dieses Video zutage förderte (nur claim_suche via Apify)
+  quelle_query?: string | null;
   status: Status;
   score: number; // 0-100
   scores: { reichweite: number; relevanz: number; tauglichkeit: number };
@@ -68,6 +70,12 @@ export interface Video {
   claim: Claim | null;
   skripte: Skript[];
   feedback: FeedbackEintrag[];
+}
+
+export interface SuchProtokollEintrag {
+  query: string;
+  gefunden: number;
+  fehler?: boolean;
 }
 
 export interface AgentRun {
@@ -79,6 +87,8 @@ export interface AgentRun {
   geflaggt: number;
   fehler: string[];
   dauer_s: number;
+  // Pro-Suchbegriff-Aufschlüsselung (nur YouTube-Apify-Suche)
+  such_protokoll?: SuchProtokollEintrag[];
 }
 
 /** Live-Status eines Scraper-Laufs (scraper/status.py → daten/agent_status.json) */

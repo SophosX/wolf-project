@@ -1,15 +1,19 @@
 # Wolf Radar — Scraper-Zeitplan (Container-TZ = UTC).
-# flock verhindert überlappende Läufe: der 4-h-Job überspringt (-n),
-# der tägliche Instagram-Job wartet blockierend, damit er nie ausfällt.
-0 */4 * * * flock -n /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
+# flock verhindert überlappende Läufe. WICHTIG: Der 4-h-Job wartet BLOCKIEREND
+# (kein -n), sonst kollidiert er zur Sekunde :00 mit dem Minuten-Job unten (beide
+# feuern bei :00) — wer den Lock -n nicht bekommt, bricht in 3-6 ms ab, OHNE zu
+# laufen. Genau das hat ~50 % der geplanten Läufe still verschluckt. Blockierend
+# wartet der Lauf die Millisekunden des Minuten-Jobs aus und startet dann normal.
+0 */4 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
 30 5 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur instagram && python3 -u lauf.py --transkribiere'
 # Rezepte-Radar: taeglich neue Community-Rezepte suchen + Chris-Fit bewerten.
 # 08:30 UTC = kurz NACH dem YouTube-Quota-Reset (Mitternacht Pacific Time),
 # damit die Rezept-Suche nie in ein leeres Tages-Kontingent laeuft.
 30 8 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u rezepte_agent.py'
 # "Jetzt suchen" aus der App: /agenten legt daten/.lauf_anfrage an; hier minuetlich
-# geprueft. Flag wird erst NACH Lock-Erhalt geloescht — laeuft gerade ein Lauf,
-# bleibt die Anfrage liegen und startet direkt im Anschluss.
-* * * * * flock -n /tmp/radar.lock sh -c 'if [ -f /app/daten/.lauf_anfrage ]; then rm -f /app/daten/.lauf_anfrage; cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok; fi'
+# geprueft. Flag-Check steht VOR flock, damit der Minuten-Job den Lock 99 % der Zeit
+# gar nicht anfasst (sonst Race mit dem 4-h-Job bei :00). Nur wenn die Flag-Datei
+# existiert, wird der Lock genommen und der Lauf gestartet.
+* * * * * [ -f /app/daten/.lauf_anfrage ] && flock -n /tmp/radar.lock sh -c 'rm -f /app/daten/.lauf_anfrage; cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
 # Optional (einkommentieren): yt-dlp/gallery-dl wöchentlich frisch ziehen
 # 0 4 * * 1 pip install -q -U yt-dlp gallery-dl

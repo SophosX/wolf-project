@@ -39,6 +39,11 @@ API_BASIS = "https://www.googleapis.com/youtube/v3"
 MAX_SEARCH_CALLS = int(os.environ.get("RADAR_MAX_SEARCH_CALLS", "50"))
 QUERIES_PRO_LAUF = int(os.environ.get("RADAR_QUERIES_PRO_LAUF", "8"))
 
+# Suchquelle: "apify" (Standard, kein Quota-Limit) oder "api" (alte YouTube Data
+# API als Fallback). Bei "apify" laufen ALLE SUCHQUERIES pro Lauf, Vorschläge
+# kommen ADDITIV dazu (verdrängen nichts mehr).
+SUCHE_MODUS = (os.environ.get("RADAR_YT_SUCHE", "apify").strip().lower() or "apify")
+
 CLAIM_SUCHE_TAGE = 60      # publishedAfter fuer die Claim-Suche
 WATCHLIST_TAGE = 30        # Zeitfenster fuer Watchlist-Uploads
 TRANSKRIPT_MIN_VIEWS = 10000
@@ -526,21 +531,40 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
 def sammle(watchlist_eintraege, extra_queries=None):
     """
     Haupteinstieg fuer lauf.py.
-    extra_queries: Zusatz-Queries aus Chris' Vorschlaegen — laufen IMMER mit und
-    verdraengen Rotations-Slots (Quota bleibt konstant: QUERIES_PRO_LAUF gesamt).
-    Rueckgabe: {"kandidaten": [...], "fehler": [...]}
+    extra_queries: Zusatz-Queries aus Chris' Vorschlaegen.
+    - Modus "apify" (Standard): ALLE SUCHQUERIES pro Lauf, Vorschlaege ADDITIV
+      obendrauf (kein Quota-Limit) — via Apify-Scraper.
+    - Modus "api": alte YouTube-Data-API-Rotation (Fallback, quota-limitiert).
+    Rueckgabe: {"kandidaten": [...], "fehler": [...], "such_protokoll": [...]}
+    such_protokoll: [{"query": q, "gefunden": n}] je Suchbegriff (Transparenz).
     (Transkripte werden separat NACH dem Vorfilter geholt: hole_transkripte)
     """
     fehler = []
     kandidaten = []
+    such_protokoll = []
     try:
-        queries = None
-        if extra_queries:
-            extras = [q for q in extra_queries if q][:4]
-            rotation = _query_rotation(SUCHQUERIES, max(1, QUERIES_PRO_LAUF - len(extras)))
-            queries = extras + [q for q in rotation if q not in extras]
-            print("[youtube] Vorschlags-Queries aktiv: %s" % ", ".join(extras))
-        kandidaten.extend(claim_suche(fehler, queries=queries))
+        if SUCHE_MODUS == "apify":
+            import apify_agent
+            extras = [q for q in (extra_queries or []) if q]
+            # additiv: Vorschlaege zuerst, dann alle Standard-Queries ohne Dubletten
+            queries = extras + [q for q in SUCHQUERIES if q not in extras]
+            if extras:
+                print("[youtube] Vorschlags-Queries (additiv): %s" % ", ".join(extras))
+            such_kand, such_protokoll = apify_agent.sammle_youtube_suche(queries, fehler)
+            kandidaten.extend(such_kand)
+            spitze = ", ".join("„%s“" % p["query"] for p in such_protokoll[:3])
+            status.schritt(
+                "YouTube: %d Suchbegriffe durchsucht (%s%s) — %d Videos gesichtet"
+                % (len(queries), spitze, " …" if len(such_protokoll) > 3 else "",
+                   len(such_kand)))
+        else:
+            queries = None
+            if extra_queries:
+                extras = [q for q in extra_queries if q][:4]
+                rotation = _query_rotation(SUCHQUERIES, max(1, QUERIES_PRO_LAUF - len(extras)))
+                queries = extras + [q for q in rotation if q not in extras]
+                print("[youtube] Vorschlags-Queries aktiv: %s" % ", ".join(extras))
+            kandidaten.extend(claim_suche(fehler, queries=queries))
     except Exception as e:
         fehler.append("youtube claim_suche: Abbruch: %s" % e)
     try:
@@ -548,7 +572,8 @@ def sammle(watchlist_eintraege, extra_queries=None):
     except Exception as e:
         fehler.append("youtube watchlist: Abbruch: %s" % e)
 
-    # Dedupe innerhalb des Laufs (Claim-Suche vs. Watchlist), Watchlist gewinnt
+    # Dedupe innerhalb des Laufs (Claim-Suche vs. Watchlist), Watchlist gewinnt.
+    # Bei Apify kann derselbe Begriff-Treffer mehrfach kommen -> erste Quelle-Query bleibt.
     nach_id = {}
     for k in kandidaten:
         vorhanden = nach_id.get(k["id"])
@@ -556,4 +581,5 @@ def sammle(watchlist_eintraege, extra_queries=None):
             if vorhanden is not None and vorhanden["quelle"] == "watchlist":
                 continue
             nach_id[k["id"]] = k
-    return {"kandidaten": list(nach_id.values()), "fehler": fehler}
+    return {"kandidaten": list(nach_id.values()), "fehler": fehler,
+            "such_protokoll": such_protokoll}

@@ -472,6 +472,7 @@ def main():
             continue
         start = time.time()
         fehler = []
+        such_protokoll = []
         gefunden, analysiert, geflaggt, neu = 0, 0, 0, 0
         qname = QUELLE_NAME.get(quelle, quelle)
         try:
@@ -479,6 +480,13 @@ def main():
             ergebnis = agenten[quelle]()
             kandidaten = ergebnis["kandidaten"]
             fehler = ergebnis["fehler"]
+            such_protokoll = ergebnis.get("such_protokoll") or []
+            # Transparenz: die ergiebigsten Suchbegriffe live ins Protokoll (Top 5)
+            if such_protokoll:
+                top = sorted(such_protokoll, key=lambda p: -p.get("gefunden", 0))[:5]
+                for p in top:
+                    if p.get("gefunden"):
+                        status.schritt("   • „%s“ → %d Treffer" % (p["query"], p["gefunden"]))
             gefunden = len(kandidaten)
             status.zaehler(gefunden=gefunden)
             status.schritt("%s: %d Videos gesichtet" % (qname, gefunden))
@@ -589,6 +597,9 @@ def main():
             "geflaggt": geflaggt,
             "fehler": fehler,
             "dauer_s": dauer,
+            # Pro-Suchbegriff-Aufschlüsselung (nur YouTube-Apify-Suche) für die
+            # "Was die Suche ergab"-Ansicht im UI.
+            "such_protokoll": such_protokoll,
         }
         try:
             speicher.speichere_agent_run(protokoll)

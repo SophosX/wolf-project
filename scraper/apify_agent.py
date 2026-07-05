@@ -13,6 +13,7 @@ für Instagram statt gallery-dl. Ohne Token: gallery-dl-Best-Effort wie bisher.
 import datetime
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -27,6 +28,19 @@ IG_ACTOR = os.environ.get("APIFY_IG_ACTOR", "apify~instagram-scraper")
 # caption-lose Videos. Umgeht YouTubes Bot-Sperre gegen die Server-IP (an der
 # yt-dlp scheitert), da Apify ueber eigene Infrastruktur/Proxies laedt.
 YT_ACTOR = os.environ.get("APIFY_YT_ACTOR", "codepoetry~youtube-transcript-ai-scraper")
+# YouTube-SUCHE via Apify (ersetzt die quota-limitierte YouTube Data API):
+# Apifys offizieller, gewarteter Scraper — kein Tageslimit, pay-per-result
+# (~5 $/1000 Videos). Sortiert nach Datum, gefiltert auf frische Uploads, damit
+# der Radar wirklich alle paar Stunden NEUE Videos findet.
+YT_SUCHE_ACTOR = os.environ.get("APIFY_YT_SUCHE_ACTOR", "streamers~youtube-scraper")
+# Kosten-/Umfang-Knöpfe: maxResults (normale Videos) + maxResultsShorts (Shorts)
+# je Suchbegriff, Datumsfilter (hour/today/week/month/year).
+# Default today = frisch & kostengünstig (die 4h-Läufe decken den Tag ab);
+# week = maximal umfangreich, aber ~5× Kosten (re-scrapt die Wochen-Backlog je Lauf).
+YT_SUCHE_MAX_RESULTS = int(os.environ.get("RADAR_YT_APIFY_MAX_RESULTS", "10"))
+YT_SUCHE_MAX_SHORTS = int(os.environ.get("RADAR_YT_APIFY_MAX_SHORTS",
+                                         str(YT_SUCHE_MAX_RESULTS)))
+YT_SUCHE_DATEFILTER = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "today").strip() or "today"
 TIMEOUT_S = 300
 
 # Discovery: kuratierte grosse DE-Profile jenseits der Watchlist (verifizierte Handles)
@@ -54,17 +68,18 @@ def verfuegbar():
     return token() is not None
 
 
-def _run_sync(actor, eingabe):
+def _run_sync(actor, eingabe, timeout=None):
     """Actor synchron ausführen, Dataset-Items zurückgeben."""
+    t = int(timeout or TIMEOUT_S)
     url = (APIFY_BASIS + "/acts/" + actor + "/run-sync-get-dataset-items?token="
-           + urllib.parse.quote(token()) + "&timeout=" + str(TIMEOUT_S))
+           + urllib.parse.quote(token()) + "&timeout=" + str(t))
     anfrage = urllib.request.Request(
         url,
         data=json.dumps(eingabe).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(anfrage, timeout=TIMEOUT_S + 30) as r:
+    with urllib.request.urlopen(anfrage, timeout=t + 30) as r:
         return json.load(r)
 
 
@@ -271,6 +286,194 @@ def _speichere_misses(misses):
             json.dump(misses, f)
     except OSError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# YouTube-SUCHE via Apify — ersetzt youtube_agent.claim_suche (Data-API-Quota)
+# ---------------------------------------------------------------------------
+
+_YT_ID_RE = re.compile(r"(?:v=|/shorts/|youtu\.be/|/watch/)([A-Za-z0-9_-]{11})")
+_YT_KANAL_RE = re.compile(r"/channel/(UC[A-Za-z0-9_-]{20,})")
+_REL_RE = re.compile(r"(\d+)\s*(second|minute|hour|day|week|month|year|"
+                     r"sekunde|minute|stunde|tag|woche|monat|jahr)", re.I)
+_REL_TAGE = {"second": 0, "sekunde": 0, "minute": 0, "hour": 0, "stunde": 0,
+             "day": 1, "tag": 1, "week": 7, "woche": 7, "month": 30, "monat": 30,
+             "year": 365, "jahr": 365}
+
+
+def _yt_video_id(url):
+    if not url:
+        return None
+    m = _YT_ID_RE.search(url)
+    return m.group(1) if m else None
+
+
+def _yt_kanal_id(kanal_url):
+    if not kanal_url:
+        return None
+    m = _YT_KANAL_RE.search(kanal_url)
+    if m:
+        return m.group(1)
+    # Handle-URL (…/@handle) — Handle als Ersatz, reicht für die Anzeige
+    teil = kanal_url.rstrip("/").split("/")[-1]
+    return teil or None
+
+
+def _apify_datum_zu_iso(wert):
+    """Apify liefert 'date' mal ISO ('2026-07-05'), mal relativ ('2 days ago').
+    Beides zu einem ISO-Zeitstempel machen; None wenn unparsebar (Velocity fällt
+    dann sauber auf den 14-Tage-Default zurück)."""
+    if not wert:
+        return None
+    s = str(wert).strip()
+    try:
+        dt = datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        pass
+    m = _REL_RE.search(s)
+    if m:
+        tage = int(m.group(1)) * _REL_TAGE.get(m.group(2).lower(), 0)
+        dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=tage)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return None
+
+
+def _dauer_mmss_zu_sekunden(wert):
+    """'29:54' oder '1:02:03' -> Sekunden. None wenn leer/Live."""
+    if not wert:
+        return None
+    if isinstance(wert, (int, float)):
+        return int(wert)
+    teile = str(wert).strip().split(":")
+    if not all(t.isdigit() for t in teile) or not teile:
+        return None
+    sek = 0
+    for t in teile:
+        sek = sek * 60 + int(t)
+    return sek
+
+
+def _ganzzahl(wert):
+    """Views/Likes können Zahl, '1.2M'-String oder None sein -> int oder None."""
+    if wert is None:
+        return None
+    if isinstance(wert, (int, float)):
+        return int(wert)
+    s = str(wert).strip().replace(",", "").replace(".", "")
+    return int(s) if s.isdigit() else None
+
+
+def _yt_such_item_zu_kandidat(it, quelle_query):
+    """Apify-Such-Item -> Kandidaten-Dict im Kontrakt-Format (None wenn unbrauchbar).
+    Feldnamen defensiv gemappt (Actor-Varianten)."""
+    vid = it.get("id") or _yt_video_id(it.get("url"))
+    if not vid or len(str(vid)) != 11:
+        return None
+    views = _ganzzahl(it.get("viewCount") if it.get("viewCount") is not None
+                      else it.get("viewsCount"))
+    # channelId ist die kanonische UC-ID (fuer Watchlist-Abgleich); sonst aus der
+    # channelUrl (/channel/UC… oder @handle) ableiten.
+    kanal_id = it.get("channelId") or _yt_kanal_id(it.get("channelUrl"))
+    return {
+        "id": "youtube:" + vid,
+        "plattform": "youtube",
+        "video_id": vid,
+        "url": it.get("url") or ("https://www.youtube.com/watch?v=%s" % vid),
+        "titel": it.get("title") or it.get("titel"),
+        "kanal": it.get("channelName") or it.get("channelTitle") or it.get("channelUsername"),
+        "kanal_id": kanal_id,
+        "kanal_follower": _ganzzahl(it.get("numberOfSubscribers")),
+        "veroeffentlicht": _apify_datum_zu_iso(
+            it.get("date") or it.get("uploadDate") or it.get("publishedTime")),
+        "views": views or 0,
+        "likes": _ganzzahl(it.get("likes")),
+        "kommentare": _ganzzahl(it.get("commentsCount")),
+        "dauer_s": _dauer_mmss_zu_sekunden(it.get("duration")),
+        "thumbnail_url": it.get("thumbnailUrl") or it.get("thumbnail"),
+        "caption": (it.get("text") or it.get("description") or "")[:3000],
+        "transkript": None,
+        "gefunden_am": _jetzt_iso(),
+        "quelle": "claim_suche",
+        "quelle_query": quelle_query,   # welcher Suchbegriff das Video zutage förderte
+        "status": "inbox",
+        "score": 0,
+        "scores": {},
+        "claim": None,
+        "skripte": [],
+        "feedback": [],
+    }
+
+
+# Suchbegriffe pro Actor-Lauf. Der Actor taggt jedes Item mit `input` (=Query),
+# daher ein Lauf für viele Begriffe (effizient) statt einer pro Begriff. In Batches,
+# damit ein einzelner run-sync nicht ins Timeout läuft.
+YT_SUCHE_BATCH = int(os.environ.get("RADAR_YT_APIFY_BATCH", "10"))
+YT_SUCHE_TIMEOUT_S = int(os.environ.get("RADAR_YT_APIFY_TIMEOUT_S", "540"))
+
+
+def sammle_youtube_suche(queries, fehler):
+    """
+    YouTube-Claim-Suche über den Apify-Scraper (kein Data-API-Quota-Limit mehr →
+    ALLE Begriffe pro Lauf). Der Actor liefert jedes Item mit `input` (Suchbegriff),
+    daher ein Lauf pro Batch statt pro Begriff. Ergebnisse werden je Begriff
+    protokolliert (Transparenz-Anforderung: "was hat jede Suche ergeben").
+
+    Rückgabe: (kandidaten, protokoll)
+      protokoll: [{"query": q, "gefunden": n, "fehler": bool}] je Suchbegriff,
+                 in der Reihenfolge der Eingabe.
+    """
+    kandidaten = []
+    queries = [q for q in queries if q]
+    # Protokoll vorbelegen, damit JEDER Begriff auftaucht (auch 0-Treffer/Fehler)
+    protokoll = {q: {"query": q, "gefunden": 0, "fehler": False} for q in queries}
+    if not verfuegbar():
+        fehler.append("apify youtube-suche: kein APIFY_TOKEN gesetzt")
+        return kandidaten, list(protokoll.values())
+
+    def _query_zu_kand(it):
+        # `input` ist der Suchbegriff, dem dieses Item entstammt
+        return it.get("input")
+
+    for i in range(0, len(queries), YT_SUCHE_BATCH):
+        batch = queries[i:i + YT_SUCHE_BATCH]
+        eingabe = {
+            "searchQueries": batch,
+            "maxResults": YT_SUCHE_MAX_RESULTS,
+            "maxResultsShorts": YT_SUCHE_MAX_SHORTS,
+            "sortingOrder": "date",       # neueste zuerst
+            "dateFilter": YT_SUCHE_DATEFILTER,
+        }
+        try:
+            items = _run_sync(YT_SUCHE_ACTOR, eingabe, timeout=YT_SUCHE_TIMEOUT_S)
+        except Exception as e:
+            fehler.append("apify youtube-suche (Batch %d: %s): %s"
+                          % (i // YT_SUCHE_BATCH + 1, ", ".join(batch), e))
+            for q in batch:
+                protokoll[q]["fehler"] = True
+            continue
+        for it in items or []:
+            q = _query_zu_kand(it)
+            eintrag = protokoll.get(q)
+            if it.get("error"):          # z. B. NO_VIDEOS für diesen Begriff
+                continue
+            try:
+                kand = _yt_such_item_zu_kandidat(it, q)
+            except Exception as e:
+                fehler.append("apify youtube-such-item: %s" % e)
+                continue
+            if kand is None:
+                continue
+            kandidaten.append(kand)
+            if eintrag is not None:
+                eintrag["gefunden"] += 1
+
+    print("[apify] YouTube-Suche: %d Begriffe in %d Batch(es), %d Roh-Treffer"
+          % (len(queries), (len(queries) + YT_SUCHE_BATCH - 1) // max(1, YT_SUCHE_BATCH),
+             len(kandidaten)))
+    return kandidaten, list(protokoll.values())
 
 
 def hole_youtube_transkripte(video_ids, fehler, sprache="de", max_zeichen=8000):

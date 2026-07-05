@@ -99,6 +99,22 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
             <span>{relativeZeit(video.veroeffentlicht)}</span>
           </div>
 
+          {/* Frische + Herkunft: wann der Radar es fand und über welchen Suchbegriff */}
+          <div className="karte-fund">
+            <span title={"Gefunden: " + video.gefunden_am}>
+              🛰 vom Radar gefunden {relativeZeit(video.gefunden_am)}
+            </span>
+            {video.quelle === "watchlist" ? (
+              <span className="karte-fund-quelle">· Beobachtungsliste</span>
+            ) : (
+              video.quelle_query && (
+                <span className="karte-fund-quelle">
+                  · Suchbegriff „{video.quelle_query}“
+                </span>
+              )
+            )}
+          </div>
+
           <div className="karte-titel">{video.titel}</div>
 
           <div className="karte-hauptzeile">
