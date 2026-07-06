@@ -46,6 +46,12 @@ YT_SUCHE_DATEFILTER = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "today").strip
 TIKTOK_SUCHE_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "clockworks~tiktok-scraper")
 TIKTOK_SUCHE_MAX = int(os.environ.get("RADAR_TIKTOK_APIFY_MAX", "8"))      # Videos je Suchbegriff
 IG_HASHTAG_MAX = int(os.environ.get("RADAR_IG_HASHTAG_MAX", "10"))        # Posts je Hashtag
+# Alters-Obergrenze fuer die breite Keyword/Hashtag-Suche (TikTok/IG). Die clockworks-
+# Keyword-Suche liefert sonst reichweitenstarke, aber JAHRE alte Videos — Christian
+# braucht Aktuelles. 0/leer = aus. Wirkt zweifach: als Actor-Input (spart Apify-Kosten)
+# UND als Nachfilter nach veroeffentlicht (greift auch, falls der Actor den Input ignoriert).
+TIKTOK_MAX_ALTER_TAGE = int(os.environ.get("RADAR_TIKTOK_MAX_ALTER_TAGE", "90") or "0")
+IG_MAX_ALTER_TAGE = int(os.environ.get("RADAR_IG_MAX_ALTER_TAGE", "90") or "0")
 TIMEOUT_S = 300
 
 # Discovery: kuratierte grosse DE-Profile jenseits der Watchlist (verifizierte Handles)
@@ -356,6 +362,29 @@ def _apify_datum_zu_iso(wert):
     return None
 
 
+def _juenger_als(iso_zeit, max_tage):
+    """True, wenn 'veroeffentlicht' innerhalb der letzten max_tage liegt.
+    max_tage<=0 -> Filter aus. Unbekanntes/unparsbares Datum -> True (was wir nicht
+    einschaetzen koennen, werfen wir nicht weg — der Vorfilter/Score faengt es sonst)."""
+    if not max_tage or max_tage <= 0 or not iso_zeit:
+        return True
+    try:
+        dt = datetime.datetime.fromisoformat(str(iso_zeit).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return (datetime.datetime.now(datetime.timezone.utc) - dt).days <= max_tage
+
+
+def _alter_grenze_datum(max_tage):
+    """YYYY-MM-DD des Stichtags (heute - max_tage) fuer Apify-Actor-Inputs; None wenn aus."""
+    if not max_tage or max_tage <= 0:
+        return None
+    grenze = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=max_tage)
+    return grenze.strftime("%Y-%m-%d")
+
+
 def _dauer_mmss_zu_sekunden(wert):
     """'29:54' oder '1:02:03' -> Sekunden. None wenn leer/Live."""
     if not wert:
@@ -568,6 +597,11 @@ def sammle_tiktok_suche(queries, fehler):
         "shouldDownloadSubtitles": True,
         "proxyCountryCode": "DE",
     }
+    grenze = _alter_grenze_datum(TIKTOK_MAX_ALTER_TAGE)
+    if grenze:
+        # Nur Videos ab Stichtag. Der Nachfilter unten erzwingt es zusaetzlich,
+        # falls der Actor diesen Input ignoriert.
+        eingabe["oldestPostDateUnified"] = grenze
     try:
         items = _run_sync(TIKTOK_SUCHE_ACTOR, eingabe, timeout=540)
     except Exception as e:
@@ -576,6 +610,7 @@ def sammle_tiktok_suche(queries, fehler):
             protokoll[q]["fehler"] = True
         return kandidaten, list(protokoll.values())
 
+    zu_alt = 0
     for it in items or []:
         try:
             kand = _tiktok_such_item_zu_kandidat(it)
@@ -584,12 +619,15 @@ def sammle_tiktok_suche(queries, fehler):
             continue
         if kand is None:
             continue
+        if not _juenger_als(kand.get("veroeffentlicht"), TIKTOK_MAX_ALTER_TAGE):
+            zu_alt += 1
+            continue
         kandidaten.append(kand)
         eintrag = protokoll.get(it.get("searchQuery"))
         if eintrag is not None:
             eintrag["gefunden"] += 1
-    print("[apify] TikTok-Suche: %d Begriffe, %d Roh-Treffer"
-          % (len(queries), len(kandidaten)))
+    print("[apify] TikTok-Suche: %d Begriffe, %d Roh-Treffer (%d zu alt, > %d Tage)"
+          % (len(queries), len(kandidaten), zu_alt, TIKTOK_MAX_ALTER_TAGE))
     return kandidaten, list(protokoll.values())
 
 
@@ -605,6 +643,12 @@ def sammle_instagram_hashtags(hashtags, fehler):
     if not verfuegbar() or not tags:
         return kandidaten, list(protokoll.values())
 
+    ig_eingabe_extra = {}
+    grenze = _alter_grenze_datum(IG_MAX_ALTER_TAGE)
+    if grenze:
+        # Nur Posts ab Stichtag (Nachfilter unten erzwingt es zusaetzlich).
+        ig_eingabe_extra["onlyPostsNewerThan"] = grenze
+    zu_alt = 0
     for tag in tags:
         try:
             items = _run_sync(IG_ACTOR, {
@@ -612,6 +656,7 @@ def sammle_instagram_hashtags(hashtags, fehler):
                 "resultsType": "posts",
                 "resultsLimit": IG_HASHTAG_MAX,
                 "addParentData": True,
+                **ig_eingabe_extra,
             })
         except Exception as e:
             fehler.append("apify instagram-hashtag #%s: %s" % (tag, e))
@@ -623,11 +668,14 @@ def sammle_instagram_hashtags(hashtags, fehler):
             kand = _item_zu_kandidat(it, {}, "claim_suche")
             if kand is None:
                 continue
+            if not _juenger_als(kand.get("veroeffentlicht"), IG_MAX_ALTER_TAGE):
+                zu_alt += 1
+                continue
             kand["quelle_query"] = "#" + tag
             kandidaten.append(kand)
             protokoll[tag]["gefunden"] += 1
-    print("[apify] Instagram-Hashtags: %d Tags, %d Roh-Treffer"
-          % (len(tags), len(kandidaten)))
+    print("[apify] Instagram-Hashtags: %d Tags, %d Roh-Treffer (%d zu alt, > %d Tage)"
+          % (len(tags), len(kandidaten), zu_alt, IG_MAX_ALTER_TAGE))
     return kandidaten, list(protokoll.values())
 
 

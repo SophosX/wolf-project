@@ -29,6 +29,20 @@ export function velocity(views: number, veroeffentlicht: string): string {
   return "+" + formatKompakt(proTag) + "/Tag";
 }
 
+/** Schwelle in Tagen, ab der ein Video als "aktuell" gilt (Badge + Inbox-Sortierung). */
+export const AKTUELL_TAGE = 14;
+
+/** true, wenn veroeffentlicht innerhalb der letzten AKTUELL_TAGE liegt. */
+export function istAktuell(
+  veroeffentlicht: string | null | undefined,
+  schwelleTage = AKTUELL_TAGE
+): boolean {
+  if (!veroeffentlicht) return false;
+  const t = new Date(veroeffentlicht).getTime();
+  if (isNaN(t)) return false;
+  return Date.now() - t <= schwelleTage * 86_400_000;
+}
+
 /** ISO → "vor 3 Tagen" / "heute" */
 export function relativeZeit(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

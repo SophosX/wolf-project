@@ -5,7 +5,7 @@
 // Falschaussage als Zitat · Warum-falsch · Themen-Chip · Score-Ring · Aktionen
 
 import { useState } from "react";
-import { formatViews, formatDauer, relativeZeit, velocity } from "@/lib/format";
+import { formatViews, formatDauer, relativeZeit, velocity, istAktuell } from "@/lib/format";
 import { themaLabel } from "@/lib/typen";
 import type { Video } from "@/lib/typen";
 import QuellenPills from "./QuellenPills";
@@ -97,6 +97,11 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
             )}
             <span>·</span>
             <span>{relativeZeit(video.veroeffentlicht)}</span>
+            {istAktuell(video.veroeffentlicht) && (
+              <span className="badge-frisch" title="Vor Kurzem veröffentlicht">
+                🔥 Aktuell
+              </span>
+            )}
           </div>
 
           {/* Frische + Herkunft: wann der Radar es fand und über welchen Suchbegriff */}

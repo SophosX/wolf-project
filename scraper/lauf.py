@@ -14,6 +14,7 @@ Lauf automatisch im --ohne-analyse-Modus weiter und speichert Rohkandidaten.
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -37,6 +38,24 @@ QUELLE_NAME = {"youtube": "YouTube", "tiktok": "TikTok", "instagram": "Instagram
 
 WATCHLIST_DATEI = os.path.join(SCRAPER_DIR, "watchlist.json")
 MINDEST_VIEWS = 1000
+# Backstop-Alterscutoff: Kandidaten (ALLER Quellen) aelter als N Tage vor der teuren
+# Analyse verwerfen. Faengt, was die plattform-Datumsfilter nicht sehen — v.a. alte
+# YouTube-Watchlist-Uploads. Grosszuegiger als die 90-Tage-Quellenfilter, damit die
+# Quelle die Hauptarbeit macht. 0/leer = aus. Unbekanntes Datum -> durchlassen.
+MAX_ALTER_TAGE = int(os.environ.get("RADAR_MAX_ALTER_TAGE", "120") or "0")
+
+
+def _zu_alt(iso_zeit, max_tage):
+    """True, wenn 'veroeffentlicht' aelter als max_tage. Aus/unbekannt -> False."""
+    if not max_tage or max_tage <= 0 or not iso_zeit:
+        return False
+    try:
+        dt = datetime.datetime.fromisoformat(str(iso_zeit).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return (datetime.datetime.now(datetime.timezone.utc) - dt).days > max_tage
 
 # Haeufige deutsche Woerter fuer die Sprach-Heuristik (kleingeschrieben)
 _DEUTSCHE_WOERTER = {
@@ -93,7 +112,7 @@ def vorfilter(kandidaten, bestand_ids, limit=None):
     Dedupe gegen Bestand + billige Filter ohne KI.
     Rueckgabe: (durchgelassen, statistik-Dict)
     """
-    stat = {"schon_bekannt": 0, "zu_wenig_views": 0, "nicht_deutsch": 0,
+    stat = {"schon_bekannt": 0, "zu_alt": 0, "zu_wenig_views": 0, "nicht_deutsch": 0,
             "kein_thema": 0, "durch": 0}
     durch = []
     gesehen = set()
@@ -104,6 +123,9 @@ def vorfilter(kandidaten, bestand_ids, limit=None):
         gesehen.add(kid)
         if kid in bestand_ids:
             stat["schon_bekannt"] += 1
+            continue
+        if _zu_alt(k.get("veroeffentlicht"), MAX_ALTER_TAGE):
+            stat["zu_alt"] += 1
             continue
         # Reichweiten-Filter: Instagram-Foto-/Carousel-Posts haben keine Views —
         # dort sind Likes der Reichweiten-Proxy (Like-Rate grob 5-8% => Faktor 12).
@@ -501,10 +523,11 @@ def main():
             status.schritt("%s: %d Videos gesichtet" % (qname, gefunden))
 
             durch, stat = vorfilter(kandidaten, bestand_ids, limit=analyse_max)
-            print("[lauf] %s: %d gefunden | Vorfilter: %d bekannt, %d <%d Views, "
-                  "%d nicht deutsch, %d ohne Thema -> %d neu"
-                  % (quelle, gefunden, stat["schon_bekannt"], stat["zu_wenig_views"],
-                     MINDEST_VIEWS, stat["nicht_deutsch"], stat["kein_thema"], stat["durch"]))
+            print("[lauf] %s: %d gefunden | Vorfilter: %d bekannt, %d zu alt (>%d T), "
+                  "%d <%d Views, %d nicht deutsch, %d ohne Thema -> %d neu"
+                  % (quelle, gefunden, stat["schon_bekannt"], stat["zu_alt"], MAX_ALTER_TAGE,
+                     stat["zu_wenig_views"], MINDEST_VIEWS, stat["nicht_deutsch"],
+                     stat["kein_thema"], stat["durch"]))
             status.schritt("%s: %d relevante neue Kandidaten (Rest: bekannt, "
                            "zu klein oder kein Ernaehrungsthema)" % (qname, stat["durch"]))
 

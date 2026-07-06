@@ -14,6 +14,9 @@
 # geprueft. Flag-Check steht VOR flock, damit der Minuten-Job den Lock 99 % der Zeit
 # gar nicht anfasst (sonst Race mit dem 4-h-Job bei :00). Nur wenn die Flag-Datei
 # existiert, wird der Lock genommen und der Lauf gestartet.
-* * * * * [ -f /app/daten/.lauf_anfrage ] && flock -n /tmp/radar.lock sh -c 'rm -f /app/daten/.lauf_anfrage; cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
+# Abschliessendes "|| true": ohne Flag-Datei liefert [ -f ] via && Exit 1 -> der
+# Cron-Runner loggt das sonst jede Minute als Error (~1440 Fehlzeilen/Tag), in denen
+# ein echter Fehler untergeht. Der Idle-Fall soll sauber mit 0 enden.
+* * * * * { [ -f /app/daten/.lauf_anfrage ] && flock -n /tmp/radar.lock sh -c 'rm -f /app/daten/.lauf_anfrage; cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'; } || true
 # Optional (einkommentieren): yt-dlp/gallery-dl wöchentlich frisch ziehen
 # 0 4 * * 1 pip install -q -U yt-dlp gallery-dl

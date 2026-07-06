@@ -3,8 +3,9 @@
 // Karten-Liste mit optimistic UI: Aktion → Karte sofort raus,
 // POST /api/feedback im Hintergrund, bei Fehler Karte zurück + roter Hinweis.
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { istAktuell } from "@/lib/format";
 import VideoKarte, { Seite, VideoAnzeige } from "./VideoKarte";
 
 interface Props {
@@ -69,14 +70,24 @@ export default function VideoListe({ videos: initial, seite, leerText }: Props) 
         </div>
       ) : (
         <div className="karten">
-          {videos.map((v) => (
-            <VideoKarte
-              key={v.id}
-              video={v}
-              seite={seite}
-              onAktion={(a, k) => aktion(v, a, k)}
-            />
-          ))}
+          {videos.map((v, i) => {
+            // Videos sind frische-zuerst sortiert: Trenner genau am Umschlag
+            // von aktuell -> aelter (nur wenn beide Gruppen existieren).
+            const trenner =
+              !istAktuell(v.veroeffentlicht) &&
+              i > 0 &&
+              istAktuell(videos[i - 1].veroeffentlicht);
+            return (
+              <Fragment key={v.id}>
+                {trenner && <div className="liste-trenner">Ältere Videos</div>}
+                <VideoKarte
+                  video={v}
+                  seite={seite}
+                  onAktion={(a, k) => aktion(v, a, k)}
+                />
+              </Fragment>
+            );
+          })}
         </div>
       )}
     </>

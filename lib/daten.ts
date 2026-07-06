@@ -6,6 +6,7 @@
 import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
+import { istAktuell } from "./format";
 import type {
   AgentRun,
   AgentStatus,
@@ -155,12 +156,19 @@ async function feedbackSortierung(videos: Video[]): Promise<Video[]> {
   try {
     boost = (await holeEinstellungen()).gelernt.themen_boost || {};
   } catch {
-    return videos; // ohne Einstellungen: unveränderte Reihenfolge
+    boost = {}; // ohne Einstellungen: kein Boost, aber Frische-Sortierung greift weiter
   }
-  if (Object.keys(boost).length === 0) return videos;
   const dyn = (v: Video) =>
     (v.score || 0) + Math.round(25 * (boost[v.claim?.thema || ""] || 0));
-  return [...videos].sort((a, b) => dyn(b) - dyn(a));
+  // Aktuelle Videos IMMER zuerst (Christian braucht Frisches), innerhalb jeder
+  // Frische-Gruppe nach dynamischem Score. Sonst versinken neue, noch view-arme
+  // Videos unter alten Reichweiten-Klassikern.
+  return [...videos].sort((a, b) => {
+    const fa = istAktuell(a.veroeffentlicht) ? 1 : 0;
+    const fb = istAktuell(b.veroeffentlicht) ? 1 : 0;
+    if (fa !== fb) return fb - fa;
+    return dyn(b) - dyn(a);
+  });
 }
 
 export async function holeVideos(filter?: VideoFilter): Promise<Video[]> {
