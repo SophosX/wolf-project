@@ -995,6 +995,23 @@ def analysiere_batch(kandidaten, gelernt):
                                 quellen=verdict_daten.get("websuche_quellen"))
             continue
 
+        # Konservativ OHNE Transkript: Bei TikTok/Instagram ohne Transkript kennt die
+        # KI nur Titel + (oft Clickbait-)Caption — das reicht NICHT fuer ein bestaetigtes
+        # "klar_falsch" in der Inbox. Solche Faelle hoechstens "strittig" (sichtbar im
+        # Strittig-Tab, aber kein Auto-Skript, kein "bestaetigter Fund"). Mit dem
+        # verbesserten Transkript-Budget bekommen echte Funde ein Transkript und
+        # landen reguläer in der Inbox.
+        kein_transkript = not (video.get("transkript") or "").strip()
+        kurzvideo = video.get("plattform") in ("tiktok", "instagram")
+        if verdict == "klar_falsch" and konfidenz >= 0.75 and kein_transkript and kurzvideo:
+            logger.info("%s: klar_falsch, aber ohne Transkript (nur Titel/Caption) "
+                        "→ strittig (konservativ).", vid)
+            verdict = "strittig"
+            konfidenz = min(konfidenz, 0.74)
+            verdict_daten["begruendung"] = (
+                "[ohne Transkript – nur nach Titel/Caption bewertet] "
+                + verdict_daten.get("begruendung", ""))
+
         # Status nach Kontrakt: klar_falsch + Konfidenz >= 0.75 → inbox; sonst strittig
         if verdict == "klar_falsch" and konfidenz >= 0.75:
             status = "inbox"

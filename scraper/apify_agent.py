@@ -504,6 +504,13 @@ def _tiktok_such_item_zu_kandidat(it):
     vmeta = it.get("videoMeta") or {}
     text = it.get("text") or ""
     handle = autor.get("name")
+    # Deutsche Auto-Untertitel (falls TikTok welche hat) — zuverlaessige, kostenlose
+    # Transkriptquelle ohne Audio-Download. Nur deutschsprachige nehmen (eng wäre Übersetzung).
+    sub_url = None
+    for s in (vmeta.get("subtitleLinks") or []):
+        if str(s.get("language", "")).lower().startswith(("deu", "de")) and s.get("downloadLink"):
+            sub_url = s["downloadLink"]
+            break
     return {
         "id": "tiktok:" + vid,
         "plattform": "tiktok",
@@ -522,6 +529,8 @@ def _tiktok_such_item_zu_kandidat(it):
         "thumbnail_url": vmeta.get("coverUrl") or vmeta.get("originalCoverUrl"),
         "caption": text[:3000],
         "transkript": None,
+        # transient (vor dem Speichern entfernt): CDN-URL der deutschen Untertitel
+        "tiktok_subtitle_url": sub_url,
         "gefunden_am": _jetzt_iso(),
         "quelle": "claim_suche",
         "quelle_query": it.get("searchQuery"),
@@ -554,7 +563,9 @@ def sammle_tiktok_suche(queries, fehler):
         "resultsPerPage": TIKTOK_SUCHE_MAX,
         "shouldDownloadVideos": False,
         "shouldDownloadCovers": False,
-        "shouldDownloadSubtitles": False,
+        # Untertitel-LINKS mitliefern (kein Video-Download) — deutsche Auto-Captions
+        # sind eine zuverlaessige, guenstige Transkriptquelle für ~1/5 der TikToks.
+        "shouldDownloadSubtitles": True,
         "proxyCountryCode": "DE",
     }
     try:

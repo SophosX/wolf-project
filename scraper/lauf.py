@@ -566,6 +566,7 @@ def main():
             vertagt_ids = set()
             for k in durch:
                 k.pop("apify_video_url", None)  # transient: kurzlebige CDN-URL nie speichern
+                k.pop("tiktok_subtitle_url", None)  # transient: kurzlebige Untertitel-CDN-URL
                 war_429 = k.pop("transkript_429", False)
                 if war_429 and (k.get("claim") or {}).get("verdict") == "aussortiert":
                     vertagt_ids.add(k.get("id"))

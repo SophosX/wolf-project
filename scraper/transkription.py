@@ -45,7 +45,7 @@ GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
 
 # Budgets pro Lauf (ENV-konfigurierbar): Audio-Transkription kostet vor allem ZEIT
 # (Download + ffmpeg + API ≈ 20-40 s pro Video), Tokens sind billig (~32/Sekunde Audio).
-MAX_AUDIO_PRO_LAUF = int(os.environ.get("RADAR_AUDIO_MAX", "12"))
+MAX_AUDIO_PRO_LAUF = int(os.environ.get("RADAR_AUDIO_MAX", "20"))
 MIN_VIEWS_KURZVIDEO = int(os.environ.get("RADAR_AUDIO_MIN_VIEWS", "2000"))   # TikTok/IG
 MIN_VIEWS_YOUTUBE = int(os.environ.get("RADAR_AUDIO_MIN_VIEWS_YT", "10000")) # YT-Fallback
 MAX_DAUER_S = int(os.environ.get("RADAR_AUDIO_MAX_DAUER_S", "1200"))  # >20 min: skip
@@ -341,6 +341,45 @@ def _ist_transkriptions_kandidat(k, min_views_kurz, min_views_yt):
     return True
 
 
+def _untertitel_text(url, fehler, kontext):
+    """Deutsche TikTok-Auto-Untertitel (WebVTT) laden und zu Fliesstext machen.
+    Nutzt den Rolling-Dedupe-Parser aus youtube_agent. None bei Fehler/leer."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            vtt = r.read().decode("utf-8", "replace")
+    except Exception as e:
+        fehler.append("transkription %s: Untertitel-Download: %s" % (kontext, str(e)[:140]))
+        return None
+    try:
+        from youtube_agent import _vtt_zu_text
+        return _vtt_zu_text(vtt, max_zeichen=TRANSKRIPT_MAX_ZEICHEN)
+    except Exception as e:
+        fehler.append("transkription %s: Untertitel-Parse: %s" % (kontext, str(e)[:140]))
+        return None
+
+
+def _untertitel_pass(kandidaten, fehler):
+    """Vor dem Audio-Weg: alle TikTok-Kandidaten mit deutschen Auto-Untertiteln
+    (tiktok_subtitle_url) direkt aus den Untertiteln transkribieren. Kostenlos,
+    zuverlaessig, kein Budget-Limit. Mutiert die Dicts. Rueckgabe: Anzahl Erfolge."""
+    ziel = [k for k in kandidaten
+            if not k.get("transkript") and k.get("tiktok_subtitle_url")]
+    if not ziel:
+        return 0
+    erfolg = 0
+    for k in ziel:
+        kontext = "%s(untertitel)" % k.get("id", "?")
+        text = _untertitel_text(k["tiktok_subtitle_url"], fehler, kontext)
+        if text:
+            k["transkript"] = text
+            erfolg += 1
+    if ziel:
+        print("[transkription] %d/%d TikTok-Untertitel übernommen (ohne Audio)"
+              % (erfolg, len(ziel)))
+    return erfolg
+
+
 def transkribiere_kandidaten(kandidaten, fehler, max_videos=None,
                              min_views_kurz=None, min_views_yt=None):
     """
@@ -354,6 +393,11 @@ def transkribiere_kandidaten(kandidaten, fehler, max_videos=None,
         min_views_kurz = MIN_VIEWS_KURZVIDEO
     if min_views_yt is None:
         min_views_yt = MIN_VIEWS_YOUTUBE
+
+    # (0) TikTok-Untertitel zuerst: kostenlos, zuverlaessig, KEIN Audio-Download noetig.
+    # Deckt die TikToks ab, die deutsche Auto-Captions haben (~1/5) — der teure/
+    # fehleranfaellige Audio-Weg bleibt nur fuer den Rest.
+    sub_erfolg = _untertitel_pass(kandidaten, fehler)
 
     skip = _lade_skip()
     uebersprungen = 0
@@ -409,4 +453,4 @@ def transkribiere_kandidaten(kandidaten, fehler, max_videos=None,
     print("[transkription] %d/%d Audio-Transkripte erfolgreich (%s)"
           % (erfolgreich, len(ziel),
              ", ".join(sorted(set(k.get("plattform", "?") for k in ziel)))))
-    return erfolgreich
+    return erfolgreich + sub_erfolg
