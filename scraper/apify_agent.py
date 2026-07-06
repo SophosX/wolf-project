@@ -41,6 +41,11 @@ YT_SUCHE_MAX_RESULTS = int(os.environ.get("RADAR_YT_APIFY_MAX_RESULTS", "10"))
 YT_SUCHE_MAX_SHORTS = int(os.environ.get("RADAR_YT_APIFY_MAX_SHORTS",
                                          str(YT_SUCHE_MAX_RESULTS)))
 YT_SUCHE_DATEFILTER = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "today").strip() or "today"
+# TikTok-Keyword-Suche (Apify clockworks) + Instagram-Hashtag-Suche — geben
+# TikTok/IG dieselbe breite Abdeckung wie die YouTube-Suche (nicht nur Watchlist).
+TIKTOK_SUCHE_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "clockworks~tiktok-scraper")
+TIKTOK_SUCHE_MAX = int(os.environ.get("RADAR_TIKTOK_APIFY_MAX", "8"))      # Videos je Suchbegriff
+IG_HASHTAG_MAX = int(os.environ.get("RADAR_IG_HASHTAG_MAX", "10"))        # Posts je Hashtag
 TIMEOUT_S = 300
 
 # Discovery: kuratierte grosse DE-Profile jenseits der Watchlist (verifizierte Handles)
@@ -197,10 +202,20 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
     Rückgabe wie die anderen Agenten: {"kandidaten": [...], "fehler": [...]}
     """
     kandidaten, fehler = [], []
+    such_protokoll = []
     # watchlist kann Liste (lauf.py) oder {"eintraege": [...]} (Rohdatei) sein
     eintraege = watchlist if isinstance(watchlist, list) else watchlist.get("eintraege", [])
     profile = [e for e in eintraege if e.get("instagram")]
     handle_zu_name = {e["instagram"].lower(): e["name"] for e in profile}
+
+    # (0) Breite Hashtag-Suche via Apify (analog YouTube/TikTok): Funde beliebiger Creators
+    if (os.environ.get("RADAR_IG_HASHTAG_SUCHE", "1").strip() or "1") != "0":
+        try:
+            from mythen_katalog import SOCIAL_HASHTAGS
+            hkand, such_protokoll = sammle_instagram_hashtags(SOCIAL_HASHTAGS, fehler)
+            kandidaten.extend(hkand)
+        except Exception as e:
+            fehler.append("apify instagram-hashtags: %s" % e)
 
     _sammle_profile([e["instagram"] for e in profile], handle_zu_name,
                     limit_pro_profil, "watchlist", kandidaten, fehler)
@@ -217,7 +232,7 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
         print("[apify] Discovery: %d Profile angefragt, gesamt %d Kandidaten"
               % (len(disco), len(kandidaten)))
 
-    return {"kandidaten": kandidaten, "fehler": fehler}
+    return {"kandidaten": kandidaten, "fehler": fehler, "such_protokoll": such_protokoll}
 
 
 def _video_url_aus_item(it):
@@ -473,6 +488,135 @@ def sammle_youtube_suche(queries, fehler):
     print("[apify] YouTube-Suche: %d Begriffe in %d Batch(es), %d Roh-Treffer"
           % (len(queries), (len(queries) + YT_SUCHE_BATCH - 1) // max(1, YT_SUCHE_BATCH),
              len(kandidaten)))
+    return kandidaten, list(protokoll.values())
+
+
+# ---------------------------------------------------------------------------
+# TikTok-KEYWORD-Suche via Apify (clockworks) — nicht mehr nur Watchlist-Profile
+# ---------------------------------------------------------------------------
+
+def _tiktok_such_item_zu_kandidat(it):
+    """clockworks-TikTok-Item -> Kandidaten-Dict im Kontrakt-Format."""
+    vid = str(it.get("id") or "")
+    if not vid:
+        return None
+    autor = it.get("authorMeta") or {}
+    vmeta = it.get("videoMeta") or {}
+    text = it.get("text") or ""
+    handle = autor.get("name")
+    return {
+        "id": "tiktok:" + vid,
+        "plattform": "tiktok",
+        "video_id": vid,
+        "url": it.get("webVideoUrl") or (
+            "https://www.tiktok.com/@%s/video/%s" % (handle or "", vid)),
+        "titel": (text.split("\n")[0][:120] if text else None) or ("TikTok von @%s" % (handle or "?")),
+        "kanal": autor.get("nickName") or handle,
+        "kanal_id": ("@" + handle) if handle else None,
+        "kanal_follower": _ganzzahl(autor.get("fans")),
+        "veroeffentlicht": _apify_datum_zu_iso(it.get("createTimeISO")),
+        "views": _ganzzahl(it.get("playCount")) or 0,
+        "likes": _ganzzahl(it.get("diggCount")),
+        "kommentare": _ganzzahl(it.get("commentCount")),
+        "dauer_s": _ganzzahl(vmeta.get("duration")),
+        "thumbnail_url": vmeta.get("coverUrl") or vmeta.get("originalCoverUrl"),
+        "caption": text[:3000],
+        "transkript": None,
+        "gefunden_am": _jetzt_iso(),
+        "quelle": "claim_suche",
+        "quelle_query": it.get("searchQuery"),
+        "status": "inbox",
+        "score": 0,
+        "scores": {},
+        "claim": None,
+        "skripte": [],
+        "feedback": [],
+    }
+
+
+def sammle_tiktok_suche(queries, fehler):
+    """
+    TikTok-Keyword-Suche über den Apify-Actor (clockworks). Findet Ernährungs-
+    Falschinfos von BELIEBIGEN Creators, nicht nur den Watchlist-Profilen.
+    Rückgabe: (kandidaten, protokoll[{query, gefunden, fehler}]).
+    """
+    kandidaten = []
+    queries = [q for q in queries if q]
+    protokoll = {q: {"query": q, "gefunden": 0, "fehler": False} for q in queries}
+    if not verfuegbar() or not queries:
+        if not verfuegbar():
+            fehler.append("apify tiktok-suche: kein APIFY_TOKEN")
+        return kandidaten, list(protokoll.values())
+
+    # Ein Lauf für alle Begriffe; jedes Item trägt searchQuery = Herkunfts-Begriff.
+    eingabe = {
+        "searchQueries": queries,
+        "resultsPerPage": TIKTOK_SUCHE_MAX,
+        "shouldDownloadVideos": False,
+        "shouldDownloadCovers": False,
+        "shouldDownloadSubtitles": False,
+        "proxyCountryCode": "DE",
+    }
+    try:
+        items = _run_sync(TIKTOK_SUCHE_ACTOR, eingabe, timeout=540)
+    except Exception as e:
+        fehler.append("apify tiktok-suche: %s" % e)
+        for q in queries:
+            protokoll[q]["fehler"] = True
+        return kandidaten, list(protokoll.values())
+
+    for it in items or []:
+        try:
+            kand = _tiktok_such_item_zu_kandidat(it)
+        except Exception as e:
+            fehler.append("apify tiktok-such-item: %s" % e)
+            continue
+        if kand is None:
+            continue
+        kandidaten.append(kand)
+        eintrag = protokoll.get(it.get("searchQuery"))
+        if eintrag is not None:
+            eintrag["gefunden"] += 1
+    print("[apify] TikTok-Suche: %d Begriffe, %d Roh-Treffer"
+          % (len(queries), len(kandidaten)))
+    return kandidaten, list(protokoll.values())
+
+
+def sammle_instagram_hashtags(hashtags, fehler):
+    """
+    Instagram-HASHTAG-Suche über den bestehenden IG-Actor (Tag-Seiten-URLs).
+    Ergänzt die Profil-basierte Suche um Funde beliebiger Creators.
+    Rückgabe: (kandidaten, protokoll[{query, gefunden, fehler}]).
+    """
+    kandidaten = []
+    tags = [h.lstrip("#") for h in (hashtags or []) if h]
+    protokoll = {t: {"query": "#" + t, "gefunden": 0, "fehler": False} for t in tags}
+    if not verfuegbar() or not tags:
+        return kandidaten, list(protokoll.values())
+
+    for tag in tags:
+        try:
+            items = _run_sync(IG_ACTOR, {
+                "directUrls": ["https://www.instagram.com/explore/tags/%s/" % tag],
+                "resultsType": "posts",
+                "resultsLimit": IG_HASHTAG_MAX,
+                "addParentData": True,
+            })
+        except Exception as e:
+            fehler.append("apify instagram-hashtag #%s: %s" % (tag, e))
+            protokoll[tag]["fehler"] = True
+            continue
+        for it in items or []:
+            if it.get("error"):
+                continue
+            kand = _item_zu_kandidat(it, {}, "claim_suche")
+            if kand is None:
+                continue
+            kand["quelle_query"] = "#" + tag
+            kandidaten.append(kand)
+            protokoll[tag]["gefunden"] += 1
+    print("[apify] Instagram-Hashtags: %d Tags, %d Roh-Treffer"
+          % (len(tags), len(kandidaten)))
     return kandidaten, list(protokoll.values())
 
 

@@ -421,6 +421,15 @@ def main():
     watchlist = lade_watchlist()
     speicher.stelle_einstellungen_sicher()
 
+    # Obergrenze fuer NEUE Kandidaten pro Quelle/Lauf: haelt Analyse-Zeit und
+    # Gemini-Kosten im Zaum, wenn eine (jetzt breite) Suche viele neue Videos
+    # liefert. Vorfilter sortiert nach Reichweite -> die staerksten zuerst; der
+    # Rest ist naechsten Lauf wieder dran (bis alles durch ist).
+    analyse_max = args.limit
+    if analyse_max is None:
+        _env = os.environ.get("RADAR_ANALYSE_MAX_NEU", "25").strip()
+        analyse_max = int(_env) if (_env.isdigit() and int(_env) > 0) else None
+
     bestand_ids = set()
     for v in speicher.lade_videos():
         bestand_ids.add(v.get("id"))
@@ -491,7 +500,7 @@ def main():
             status.zaehler(gefunden=gefunden)
             status.schritt("%s: %d Videos gesichtet" % (qname, gefunden))
 
-            durch, stat = vorfilter(kandidaten, bestand_ids, limit=args.limit)
+            durch, stat = vorfilter(kandidaten, bestand_ids, limit=analyse_max)
             print("[lauf] %s: %d gefunden | Vorfilter: %d bekannt, %d <%d Views, "
                   "%d nicht deutsch, %d ohne Thema -> %d neu"
                   % (quelle, gefunden, stat["schon_bekannt"], stat["zu_wenig_views"],

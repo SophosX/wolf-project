@@ -254,13 +254,35 @@ def details_nachladen(kandidaten, fehler, min_views=DETAIL_MIN_VIEWS,
     return nachgeladen
 
 
+def apify_suche_aktiv():
+    return (os.environ.get("RADAR_TIKTOK_SUCHE", "1").strip() or "1") != "0"
+
+
 def sammle(watchlist_eintraege):
     """
-    Haupteinstieg fuer lauf.py: alle Watchlist-Profile mit TikTok-Handle.
-    Rueckgabe: {"kandidaten": [...], "fehler": [...]}
+    Haupteinstieg fuer lauf.py:
+    (0) Apify-Keyword-Suche (SOCIAL_SUCHQUERIES) — Falschinfos beliebiger Creators,
+    (a) Watchlist-Profile mit TikTok-Handle,
+    (b) Discovery-Profile.
+    Rueckgabe: {"kandidaten": [...], "fehler": [...], "such_protokoll": [...]}
     """
     fehler = []
     kandidaten = []
+    such_protokoll = []
+
+    # (0) Breite Keyword-Suche via Apify (analog zur YouTube-Suche)
+    if apify_suche_aktiv():
+        try:
+            import apify_agent
+            from mythen_katalog import SOCIAL_SUCHQUERIES
+            if apify_agent.verfuegbar():
+                such_kand, such_protokoll = apify_agent.sammle_tiktok_suche(
+                    SOCIAL_SUCHQUERIES, fehler)
+                kandidaten.extend(such_kand)
+                print("[tiktok] Apify-Suche: %d Kandidaten" % len(such_kand))
+        except Exception as e:
+            fehler.append("tiktok apify-suche: %s" % e)
+
     handles = [(e.get("tiktok"), e.get("name")) for e in watchlist_eintraege if e.get("tiktok")]
     for i, (handle, name) in enumerate(handles):
         if i > 0:
@@ -286,4 +308,4 @@ def sammle(watchlist_eintraege):
     except Exception as e:
         fehler.append("tiktok details: Abbruch: %s" % e)
 
-    return {"kandidaten": kandidaten, "fehler": fehler}
+    return {"kandidaten": kandidaten, "fehler": fehler, "such_protokoll": such_protokoll}

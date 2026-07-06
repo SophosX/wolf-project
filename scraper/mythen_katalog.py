@@ -256,6 +256,50 @@ SUCHQUERIES = [
     "Abnehmen im Schlaf Trick funktioniert",
 ]
 
+# ---------------------------------------------------------------------------
+# Social-Suche (TikTok-Suchbegriffe + Instagram-Hashtags)
+# Kuerzer/knackiger als die YouTube-Claim-Saetze — so suchen Leute auf TikTok/IG.
+# Genutzt von tiktok_agent (Apify-Suche) und apify_agent.sammle_instagram (Hashtags).
+# ---------------------------------------------------------------------------
+
+SOCIAL_SUCHQUERIES = [
+    "abnehmen ohne sport trick",
+    "stoffwechsel ankurbeln trick",
+    "kalorien sind egal abnehmen",
+    "kaloriendefizit mythos",
+    "detox entgiften abnehmen",
+    "kohlenhydrate abends dick",
+    "zucker ist gift",
+    "aspartam gefährlich",
+    "süßstoff ungesund darm",
+    "intervallfasten autophagie",
+    "bauchfett gezielt verbrennen",
+    "apfelessig abnehmen trick",
+    "insulin abnehmen trick",
+    "cortisol bauchfett senken",
+    "zu viel protein niere",
+    "seed oils samenöl giftig",
+    "fettverbrennung ankurbeln",
+    "hormone abnehmen frauen",
+    "leber entgiften abnehmen",
+    "5 kilo woche abnehmen",
+]
+
+SOCIAL_HASHTAGS = [
+    "abnehmen",
+    "abnehmtipps",
+    "stoffwechsel",
+    "stoffwechselankurbeln",
+    "kaloriendefizit",
+    "detox",
+    "intervallfasten",
+    "zuckerfrei",
+    "lowcarb",
+    "darmgesundheit",
+    "entgiften",
+    "fettverbrennung",
+]
+
 
 def finde_themen(text):
     """
