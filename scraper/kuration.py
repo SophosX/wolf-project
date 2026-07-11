@@ -137,7 +137,9 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     # Pools — findet auch Funde ohne Keyword-Treffer (z.B. von den Suchen
     # ANDERER Nutzer). Schwelle konservativ, Kosten: 0 LLM-Calls (Embeddings
     # sind gecacht bzw. einmalig pro Thema).
-    SEMANTIK_SCHWELLE = float(os.environ.get("RADAR_SEMANTIK_SCHWELLE", "0.55"))
+    # Kalibriert 2026-07-11 auf gemini-embedding-001@768 (hohe Baseline ~0.58):
+    # eigene Nischen-Claims erreichen 0.67-0.74, fachfremde max ~0.66.
+    SEMANTIK_SCHWELLE = float(os.environ.get("RADAR_SEMANTIK_SCHWELLE", "0.66"))
     pool_nach_id = {v.get("id"): v for v in kandidaten}
     semantisch = 0
     seit_iso = min((v.get("gefunden_am") or "9999" for v in pool), default=None)
@@ -166,8 +168,8 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     # --- Relevanz-Gate: Keyword-Treffer sind nur ein VORSCHLAG — bestehen
     # muss jeder Kandidat die semantische Naehe zwischen SEINEM Thema und der
     # Kernaussage des Videos. Fachfremde Kategorie => hoehere Huerde.
-    MIN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT", "0.45"))
-    FREMD_AEHNLICHKEIT = 0.55
+    MIN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT", "0.66"))
+    FREMD_AEHNLICHKEIT = 0.68
     labels = set((profil.get("interessen_profil") or {}).get("interessen_labels") or [])
     thema_embs = {}
     gate_verworfen = 0
