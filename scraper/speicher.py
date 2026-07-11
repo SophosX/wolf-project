@@ -493,6 +493,7 @@ POOL_FELDER = (
     "kanal_follower", "veroeffentlicht", "views", "likes", "kommentare",
     "dauer_s", "thumbnail_url", "caption", "transkript", "sprache",
     "quelle", "quelle_query", "gefunden_am", "claim", "webcheck",
+    "kategorie", "claim_embedding",
 )
 
 
@@ -693,6 +694,36 @@ def lade_pool_neu(seit_iso, mit_claim=True):
         if len(zeilen) < 1000:
             return alle
         seite += 1
+
+
+def hole_thema_embedding(user_id, slug, thema):
+    """Embedding eines Nutzer-Themas — gecacht in themen.embedding, sonst
+    einmalig berechnet (Name + Keywords) und zurueckgeschrieben."""
+    zeilen = _supabase_get("themen", {
+        "select": "embedding", "user_id": "eq." + str(user_id), "slug": "eq." + slug,
+    }) or []
+    roh = zeilen[0].get("embedding") if zeilen else None
+    if roh:
+        # pgvector kommt als String "[0.1,...]" ueber REST
+        if isinstance(roh, str):
+            try:
+                roh = json.loads(roh)
+            except ValueError:
+                roh = None
+        if roh:
+            return roh
+    try:
+        import narrativ
+        text = "%s: %s" % (thema.get("name") or slug,
+                           ", ".join(thema.get("keywords") or []))
+        vektor = narrativ.embed_text(text, dim=768, task="RETRIEVAL_QUERY")
+    except Exception as e:
+        print("[speicher] Thema-Embedding %s fehlgeschlagen: %s" % (slug, e))
+        return None
+    if vektor:
+        _supabase_patch("themen", {"user_id": "eq." + str(user_id), "slug": "eq." + slug},
+                        {"embedding": vektor})
+    return vektor or None
 
 
 def speichere_webcheck(video_id, webcheck):

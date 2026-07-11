@@ -478,7 +478,14 @@ def main():
         import analyse as _analyse
 
         def analysiere_batch(kandidaten):
-            return _analyse.extrahiere_claims(kandidaten)
+            mit_claim = _analyse.extrahiere_claims(kandidaten)
+            # Pool-Vernetzung: neutrale Kategorie + Claim-Embedding, damit
+            # ALLE Nutzer den Fund finden (Keyword UND semantisch)
+            try:
+                themenwelt.vernetze_pool_kandidaten(mit_claim)
+            except Exception as e:
+                print("[lauf] WARNUNG: Pool-Vernetzung fehlgeschlagen: %s" % e)
+            return mit_claim
 
         generiere_skripte = None  # Skripte entstehen per-User on demand
         try:

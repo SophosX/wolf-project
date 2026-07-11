@@ -109,6 +109,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
 
     # --- Deterministisches Matching ----------------------------------------
     gematcht = []
+    gematcht_ids = set()
     for v in kandidaten:
         text = " ".join(filter(None, [v.get("titel"), v.get("caption"),
                                       (v.get("claim") or {}).get("aussage"),
@@ -119,6 +120,38 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
             continue
         slug = slugs[0] if slugs else sorted(themen, key=lambda s: -themen[s]["kerngewicht"])[0]
         gematcht.append((_match_score(v, slug, themen, gelernt, auf_watchlist), slug, v))
+        gematcht_ids.add(v.get("id"))
+
+    # --- Semantisches Matching (Pool-Vernetzung) -----------------------------
+    # Aehnlichkeit zwischen Nutzer-Themen und Claim-Embeddings des GESAMTEN
+    # Pools — findet auch Funde ohne Keyword-Treffer (z.B. von den Suchen
+    # ANDERER Nutzer). Schwelle konservativ, Kosten: 0 LLM-Calls (Embeddings
+    # sind gecacht bzw. einmalig pro Thema).
+    SEMANTIK_SCHWELLE = float(os.environ.get("RADAR_SEMANTIK_SCHWELLE", "0.55"))
+    pool_nach_id = {v.get("id"): v for v in kandidaten}
+    semantisch = 0
+    seit_iso = min((v.get("gefunden_am") or "9999" for v in pool), default=None)
+    if pool_nach_id and seit_iso:
+        for slug, thema in themen.items():
+            emb = speicher.hole_thema_embedding(uid, slug, thema)
+            if not emb:
+                continue
+            treffer = speicher._supabase_rpc("match_pool", {
+                "p_embedding": emb, "p_seit": seit_iso, "p_k": 10}) or []
+            for t in treffer:
+                vid = t.get("id")
+                if (vid not in pool_nach_id or vid in gematcht_ids
+                        or float(t.get("aehnlichkeit") or 0) < SEMANTIK_SCHWELLE):
+                    continue
+                v = pool_nach_id[vid]
+                score = (_match_score(v, slug, themen, gelernt, False)
+                         * float(t["aehnlichkeit"]))
+                gematcht.append((score, slug, v))
+                gematcht_ids.add(vid)
+                semantisch += 1
+    if semantisch:
+        print("[kuration] %s: +%d semantische Kandidaten (Pool-Vernetzung)"
+              % (uid, semantisch))
     gematcht.sort(key=lambda t: -t[0])
 
     cap = limit or limits["kuration_max_neu"]

@@ -373,6 +373,54 @@ alter table agent_runs         enable row level security;
 alter table auftraege          enable row level security;
 
 -- ----------------------------------------------------------------------------
+-- Pool-VERNETZUNG (geteilte Datenbasis): neutrale Kategorie + Claim-Embedding
+-- am Pool-Video. Damit profitiert JEDER Nutzer von den Funden aller anderen —
+-- Matching laeuft zusaetzlich semantisch (Aehnlichkeit), nicht nur ueber
+-- Keywords. Kategorie = Bereichs-Slug aus scraper/interessen_katalog.json.
+-- ----------------------------------------------------------------------------
+
+alter table videos add column if not exists kategorie text;
+alter table videos add column if not exists claim_embedding vector(768);
+create index if not exists videos_claim_embedding on videos
+  using hnsw (claim_embedding vector_cosine_ops);
+create index if not exists videos_kategorie on videos (kategorie);
+
+-- Themen-Embedding (per-User, gecacht): Anker fuer das semantische Matching.
+alter table themen add column if not exists embedding vector(768);
+
+-- Semantische Pool-Suche fuer die Kuration: naechste Claims zu einem
+-- Themen-Embedding im Zeitfenster.
+create or replace function match_pool(
+  p_embedding vector(768), p_seit timestamptz, p_k int default 12
+) returns table(id text, aehnlichkeit double precision)
+language sql stable
+set search_path = public
+as $$
+  select v.id, 1 - (v.claim_embedding <=> p_embedding) as aehnlichkeit
+  from videos v
+  where v.claim_embedding is not null
+    and v.gefunden_am >= p_seit
+  order by v.claim_embedding <=> p_embedding
+  limit p_k
+$$;
+
+-- Aehnliche Funde zu einem Video (Vernetzung, z.B. "mehr wie dieses").
+create or replace function aehnliche_videos(p_video_id text, p_k int default 6)
+returns setof videos
+language sql stable
+set search_path = public
+as $$
+  select v2.*
+  from videos v1, lateral (
+    select * from videos v2
+    where v2.id <> v1.id and v2.claim_embedding is not null
+    order by v2.claim_embedding <=> v1.claim_embedding
+    limit p_k
+  ) v2
+  where v1.id = p_video_id and v1.claim_embedding is not null
+$$;
+
+-- ----------------------------------------------------------------------------
 -- Phase 2 (Embeddings/RAG-Befüllung) nutzt narrativ_chunks.embedding +
 -- match_narrativ() — Schema dafür ist oben bereits vollständig angelegt.
 -- ----------------------------------------------------------------------------

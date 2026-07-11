@@ -262,6 +262,104 @@ def lade_nutzer():
     return nutzer
 
 
+# ---------------------------------------------------------------------------
+# Pool-Vernetzung: neutrale Kategorie + Claim-Embedding am geteilten Pool.
+# Jeder Fund — egal wessen Suche ihn fand — wird so fuer ALLE Nutzer
+# auffindbar (Kategorie-Filter + semantische Aehnlichkeit).
+# ---------------------------------------------------------------------------
+
+_KATALOG_CACHE = None
+
+
+def _interessen_katalog():
+    global _KATALOG_CACHE
+    if _KATALOG_CACHE is None:
+        import json
+        try:
+            with open(os.path.join(SCRAPER_DIR, "interessen_katalog.json"),
+                      encoding="utf-8") as f:
+                _KATALOG_CACHE = json.load(f).get("bereiche", [])
+        except (OSError, ValueError) as e:
+            logger.warning("interessen_katalog.json nicht lesbar: %s", e)
+            _KATALOG_CACHE = []
+    return _KATALOG_CACHE
+
+
+def kategorisiere(text):
+    """Neutraler Bereichs-Slug (interessen_katalog) mit den meisten
+    Keyword-Treffern im Text; None ohne Treffer. Deterministisch, kein LLM."""
+    if not text:
+        return None
+    text_klein = text.lower()
+    beste, beste_treffer = None, 0
+    for bereich in _interessen_katalog():
+        treffer = 0
+        for thema in bereich.get("themen", []):
+            treffer += sum(1 for kw in thema.get("keywords", []) if kw in text_klein)
+        if treffer > beste_treffer:
+            beste, beste_treffer = bereich["slug"], treffer
+    return beste
+
+
+def vernetze_pool_kandidaten(kandidaten):
+    """Nach der Claim-Extraktion (Akquise): kategorie + claim_embedding an
+    neue Pool-Videos haengen. Fail-safe — Fehler kosten nur die Vernetzung."""
+    if speicher.daten_modus() != "supabase":
+        return
+    import time as _time
+    try:
+        import narrativ
+    except ImportError:
+        return
+    n = 0
+    for k in kandidaten or []:
+        aussage = ((k.get("claim") or {}).get("aussage") or "").strip()
+        if not aussage:
+            continue
+        k["kategorie"] = kategorisiere(" ".join(filter(None, [
+            k.get("titel"), aussage, k.get("caption")])))
+        try:
+            k["claim_embedding"] = narrativ.embed_text(
+                aussage, dim=768, task="RETRIEVAL_DOCUMENT") or None
+            n += 1
+            _time.sleep(0.1)
+        except Exception as e:
+            logger.debug("Claim-Embedding %s fehlgeschlagen: %s", k.get("id"), e)
+    if n:
+        logger.info("Pool-Vernetzung: %d Claims embedded/kategorisiert.", n)
+
+
+def backfill_pool_vernetzung(limit=500):
+    """Einmalig: Bestand ohne kategorie/claim_embedding nachvernetzen."""
+    zeilen = speicher._supabase_get("videos", {
+        "select": "id,titel,caption,claim",
+        "claim": "not.is.null", "claim_embedding": "is.null",
+        "limit": str(limit),
+    }) or []
+    print("[vernetzung] Backfill: %d Videos" % len(zeilen))
+    import narrativ
+    import time as _time
+    n = 0
+    for v in zeilen:
+        aussage = ((v.get("claim") or {}).get("aussage") or "").strip()
+        if not aussage:
+            continue
+        felder = {"kategorie": kategorisiere(" ".join(filter(None, [
+            v.get("titel"), aussage, v.get("caption")])))}
+        try:
+            felder["claim_embedding"] = narrativ.embed_text(
+                aussage, dim=768, task="RETRIEVAL_DOCUMENT") or None
+        except Exception as e:
+            print("[vernetzung] embed %s: %s" % (v["id"], e))
+        speicher._supabase_patch("videos", {"id": "eq." + v["id"]}, felder)
+        n += 1
+        if n % 50 == 0:
+            print("[vernetzung] %d/%d" % (n, len(zeilen)))
+        _time.sleep(0.1)
+    print("[vernetzung] Backfill fertig: %d" % n)
+    return n
+
+
 def narrativ_fn_fuer(user_id):
     """Per-User-O-Ton-Retriever: Query-Embedding (768) + match_narrativ-RPC.
     None im Lokal-Modus (dort nutzt analyse.py den Datei-Index)."""
