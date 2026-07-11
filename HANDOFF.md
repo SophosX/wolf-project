@@ -51,9 +51,38 @@ Container: `wolf-project-scraper-1` (supercronic), `wolf-project-radar-1` (Next.
 3. `nachanalyse`/`neubewertung` sind reine Lokal-Modus-Werkzeuge (v2: Verdicts
    leben per-User in `video_zuordnung`).
 
+## Session 2026-07-11 spaet (nach Cutover) — Kurzlog
+
+1. **Admin-Dashboard** (/admin, nur echte Admin-Session): Nutzerliste mit
+   Aktivitaet, Plan-Wechsel, per-User-Limit-Overrides (profiles.limits),
+   Invite-Codes + Invite-ANFRAGEN (Landing-Formular -> ntfy-Push -> Einladen
+   mit mailto-Entwurf). Christian gedrosselt (kuration 10, queries/Lauf 30).
+2. **Gefuehrtes Onboarding**: Interessen-Chips (interessen_katalog.json,
+   12 Bereiche mit Starter-Packs) -> sofortige Themen/Queries/Trigger;
+   Kanal optional; Fokus-Freitext als Reduce-Leitplanke; Live-Fortschritt
+   (auftraege.payload); Abschluss stoesst vollen Lauf an (~30 min erste Funde).
+3. **Landing /start** (Hero, 3 Schritte, Mock-Karte, Login, Invite-Anfrage);
+   offener Betrieb beendet — Christian via Magic-Link (/root/.wolf-radar-magiclink).
+4. **Pool-Vernetzung**: videos.kategorie + claim_embedding(768) + HNSW;
+   RPCs match_pool/aehnliche_videos; Kuration matcht Keyword + semantisch.
+5. **Multi-Nischen-Fixes nach Finanz-Testnutzer** (finanztest@/labeltest@):
+   - Keyword-Matching ohne Transkript + semantisches Relevanz-Gate
+     (EMPIRISCH kalibriert: Basis 0.66, fachfremd/unkategorisiert 0.68 —
+     gemini-embedding-Baseline ist ~0.58, geratene Schwellen wirkungslos!).
+   - Keyword-Vorfilter gilt nicht mehr fuer Claim-Suche-Treffer (Query=Signal).
+   - Rezepte = Feature-Flag (einstellungen.rezepte_aktiv), Tab adaptiv.
+   - Beobachtungsliste user-scoped (lib/watchlist.ts las Christians Datei!),
+     PersonHinzufuegen-Formular, Lerner schlaegt Kanaele mit >=2 Annahmen vor.
+   - Such-Protokoll (/api/agenten) pro Nutzer gefiltert (Privacy!).
+   Verifiziert: Kuration finanztest vs 253er-Ernaehrungs-Pool ->
+   relevanz_gate=49, 0 Zuordnungen, 0 LLM-Kosten.
+
 ## Offen
 
-- Rezepte-Agent per-User (Pro-Gate); Plan-Gates hart durchsetzen (Skripte/Woche);
-  Signup öffnen = `RADAR_INVITE_CODES` entfernen; zweiter Test-Creator anderer
-  Nische komplett durchs Onboarding (E2E); Backup-Cron für Supabase-DB
-  (pg_dump analog /opt/matrix-Muster) — **WICHTIG, aktuell kein DB-Backup!**
+- Rezepte-Agent echte per-User-Schleife (aktuell Standard-Tenant-Bruecke).
+- Signup oeffnen = `RADAR_INVITE_CODES` entfernen (User-Entscheidung).
+- Testnutzer finanztest@/labeltest@ behalten oder loeschen (User fragen).
+- PR feat/multi-tenant -> main, wenn stabil.
+- Erledigt seit letztem Stand: Plan-Gates (Skripte/Woche 403), E2E-Test
+  Finanz-Creator komplett, DB-Backup-Cron 02:30 (/opt/supabase/backup.sh),
+  DSGVO-Loeschkaskade verifiziert.
