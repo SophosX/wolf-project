@@ -3,7 +3,7 @@
 
 import { aktuellerNutzer } from "@/lib/auth";
 import { datenModus, holeVideos } from "@/lib/daten";
-import { istAufWatchlist } from "@/lib/watchlist";
+import { holeWatchlist, istAufWatchlistIn } from "@/lib/watchlist";
 import type { Plattform, Status } from "@/lib/typen";
 import type { Seite, VideoAnzeige } from "./VideoKarte";
 import FilterLeiste from "./FilterLeiste";
@@ -50,7 +50,8 @@ export default async function ListenSeite({
       thema: thema || undefined,
       zeitraumTage: isNaN(zeitraumTage) ? undefined : zeitraumTage,
     });
-    videos = gefiltert.map((v) => ({ ...v, beobachtung: istAufWatchlist(v) }));
+    const watchlist = await holeWatchlist(nutzer.userId);
+    videos = gefiltert.map((v) => ({ ...v, beobachtung: istAufWatchlistIn(watchlist, v) }));
   } catch (e) {
     console.error("[ListenSeite]", e);
     ladefehler = e instanceof Error ? e.message : "Daten konnten nicht geladen werden";

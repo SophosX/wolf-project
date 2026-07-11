@@ -241,6 +241,44 @@ def lerne_nutzer(user_id):
         print("[lerner] %s: %d Themen- + %d Query-Vorschlaege abgelegt (aktiv=false)"
               % (user_id, len(themen_vorschlaege), len(query_vorschlaege)))
 
+    # --- Beobachtungs-Vorschlaege (deterministisch, kein LLM): Kanaele mit
+    # >=2 angenommenen Videos, die noch nicht auf der Watchlist stehen ---
+    try:
+        angenommen = speicher._supabase_get("video_zuordnung", {
+            "select": "video:videos(kanal,kanal_id,plattform)",
+            "user_id": "eq." + str(user_id), "status": "eq.angenommen",
+        }) or []
+        zaehler = {}
+        for z in angenommen:
+            video = z.get("video") or {}
+            kanal = (video.get("kanal") or "").strip()
+            if kanal:
+                schluessel = kanal.lower()
+                eintrag = zaehler.setdefault(schluessel, {
+                    "name": kanal, "anzahl": 0,
+                    "plattform": video.get("plattform"),
+                    "handle": video.get("kanal_id"),
+                })
+                eintrag["anzahl"] += 1
+        bestehende = {(w.get("name") or "").lower()
+                      for w in speicher.lade_watchlist_personen(user_id, nur_gefolgte=False)}
+        vorschlaege = [e for k, e in zaehler.items()
+                       if e["anzahl"] >= 2 and k not in bestehende][:5]
+        if vorschlaege:
+            speicher._supabase_post("watchlist_personen", [{
+                "user_id": str(user_id), "name": e["name"],
+                "plattform": e.get("plattform"),
+                "handle": e.get("handle"),
+                "folgt": False, "quelle": "lerner",
+                "notizen": "Vorschlag: %d deiner angenommenen Videos stammen von hier."
+                           % e["anzahl"],
+            } for e in vorschlaege],
+                prefer="return=minimal,resolution=ignore-duplicates")
+            print("[lerner] %s: %d Beobachtungs-Vorschlaege (>=2 Annahmen)"
+                  % (user_id, len(vorschlaege)))
+    except Exception as e:
+        print("[lerner] Beobachtungs-Vorschlaege fehlgeschlagen: %s" % e)
+
     speicher.speichere_agent_run({
         "user_id": str(user_id), "typ": "lerner", "quelle": "profil_lerner",
         "gefunden": len(feedback), "analysiert": len(alte_liste),

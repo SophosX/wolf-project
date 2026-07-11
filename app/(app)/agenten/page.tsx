@@ -4,12 +4,15 @@
 
 import VorschlagBox from "@/components/VorschlagBox";
 import AgentenPanel from "@/components/AgentenPanel";
+import PersonHinzufuegen from "@/components/PersonHinzufuegen";
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeWatchlist } from "@/lib/watchlist";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentenSeite() {
-  const watchlist = holeWatchlist();
+  const nutzer = await aktuellerNutzer();
+  const watchlist = await holeWatchlist(nutzer.userId);
 
   return (
     <>
@@ -42,9 +45,15 @@ export default async function AgentenSeite() {
           </div>
         ))}
         {watchlist.length === 0 && (
-          <p className="dim">Beobachtungsliste ist leer.</p>
+          <p className="dim">
+            Deine Beobachtungsliste ist leer — füge unten jemanden hinzu oder
+            folge Personen im <a href="/personen">Personen-Tab</a>. Dein Radar
+            schlägt dir außerdem automatisch Leute vor, deren Videos du öfter
+            annimmst.
+          </p>
         )}
       </div>
+      <PersonHinzufuegen />
     </>
   );
 }
