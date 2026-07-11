@@ -106,6 +106,11 @@ def upsert(tabelle, zeilen, konflikt=None):
         url += "?on_conflict=" + konflikt
     headers = dict(speicher._supabase_headers())
     headers["Prefer"] = prefer
+    # PostgREST-Bulk: alle Zeilen eines Batches muessen dieselben Keys haben
+    alle_keys = set()
+    for z in zeilen:
+        alle_keys.update(z.keys())
+    zeilen = [{k: z.get(k) for k in alle_keys} for z in zeilen]
     ok = 0
     for i in range(0, len(zeilen), 200):
         batch = zeilen[i:i + 200]

@@ -495,8 +495,11 @@ POOL_FELDER = (
 
 
 def _nur_pool_felder(kandidat):
-    zeile = {k: kandidat.get(k) for k in POOL_FELDER if k in kandidat}
-    zeile.setdefault("gefunden_am", jetzt_iso())
+    # ALLE Pool-Spalten ausgeben (fehlende als None): PostgREST-Bulk-Inserts
+    # verlangen identische Schluessel in allen Zeilen eines Batches (PGRST102).
+    zeile = {k: kandidat.get(k) for k in POOL_FELDER}
+    if not zeile.get("gefunden_am"):
+        zeile["gefunden_am"] = jetzt_iso()
     return zeile
 
 
