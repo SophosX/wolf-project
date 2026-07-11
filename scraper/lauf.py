@@ -28,6 +28,7 @@ if SCRAPER_DIR not in sys.path:
 
 import speicher
 import status
+import themenwelt
 import youtube_agent
 import tiktok_agent
 import instagram_agent
@@ -107,9 +108,11 @@ def lade_watchlist():
     return datei_eintraege
 
 
-def vorfilter(kandidaten, bestand_ids, limit=None):
+def vorfilter(kandidaten, bestand_ids, limit=None, keywords=None):
     """
     Dedupe gegen Bestand + billige Filter ohne KI.
+    keywords: optionales Keyword-Set (Akquise-Modus: Union der Themen ALLER
+    aktiven Nutzer); None = mythen_katalog.finde_themen (Lokal-Betrieb).
     Rueckgabe: (durchgelassen, statistik-Dict)
     """
     stat = {"schon_bekannt": 0, "zu_alt": 0, "zu_wenig_views": 0, "nicht_deutsch": 0,
@@ -139,9 +142,13 @@ def vorfilter(kandidaten, bestand_ids, limit=None):
         if not ist_deutsch(text):
             stat["nicht_deutsch"] += 1
             continue
-        themen = finde_themen(" ".join(filter(None, [
-            k.get("titel"), k.get("caption"), k.get("transkript")])))
-        if not themen:
+        inhalt = " ".join(filter(None, [
+            k.get("titel"), k.get("caption"), k.get("transkript")])).lower()
+        if keywords is not None:
+            passt = any(kw in inhalt for kw in keywords)
+        else:
+            passt = bool(finde_themen(inhalt))
+        if not passt:
             stat["kein_thema"] += 1
             continue
         durch.append(k)
@@ -440,7 +447,12 @@ def main():
         return neubewertung(limit=args.limit)
 
     quellen = [q.strip() for q in args.nur.split(",") if q.strip()]
-    watchlist = lade_watchlist()
+    # Akquise-Modus (Supabase): geteilter Pool — Scrape-Plan aus der Themenwelt
+    # (deduplizierte Queries ALLER aktiven Nutzer), nur Stufe A/B (neutraler
+    # Claim), KEIN Verdict/Score/Skript — das macht kuration.py pro Nutzer.
+    akquise = speicher.daten_modus() == "supabase"
+    scrape_plan = themenwelt.lade_scrape_plan()
+    watchlist = scrape_plan.get("watchlist") or lade_watchlist()
     speicher.stelle_einstellungen_sicher()
 
     # Obergrenze fuer NEUE Kandidaten pro Quelle/Lauf: haelt Analyse-Zeit und
@@ -460,7 +472,20 @@ def main():
     status.start("lauf", quellen)
 
     analysiere_batch, generiere_skripte = (None, None)
-    if not args.ohne_analyse:
+    akquise_keywords = None
+    if akquise:
+        # Nur Stufe A/B — als batch-kompatible Funktion verpackt
+        import analyse as _analyse
+
+        def analysiere_batch(kandidaten):
+            return _analyse.extrahiere_claims(kandidaten)
+
+        generiere_skripte = None  # Skripte entstehen per-User on demand
+        try:
+            akquise_keywords = themenwelt.keywords_union()
+        except Exception as e:
+            print("[lauf] WARNUNG: keywords_union fehlgeschlagen: %s" % e)
+    elif not args.ohne_analyse:
         analysiere_batch, generiere_skripte = analyse_laden()
         if analysiere_batch is None:
             print("[lauf] analyse.py noch nicht vorhanden — laufe ohne Analyse weiter (Rohkandidaten)")
@@ -472,7 +497,9 @@ def main():
             import apify_agent
             if apify_agent.verfuegbar():
                 print("[lauf] instagram: Apify-Modus (APIFY_TOKEN gesetzt)")
-                return apify_agent.sammle_instagram(watchlist)
+                return apify_agent.sammle_instagram(
+                    watchlist,
+                    hashtags=scrape_plan.get("instagram_hashtags") if akquise else None)
         except ImportError:
             pass
         return instagram_agent.sammle(watchlist)
@@ -489,8 +516,11 @@ def main():
                        typ="erfolg")
 
     agenten = {
-        "youtube": lambda: youtube_agent.sammle(watchlist, extra_queries=extra_queries),
-        "tiktok": lambda: tiktok_agent.sammle(watchlist),
+        "youtube": lambda: youtube_agent.sammle(
+            watchlist, extra_queries=extra_queries,
+            queries=scrape_plan.get("youtube") if akquise else None),
+        "tiktok": lambda: tiktok_agent.sammle(
+            watchlist, queries=scrape_plan.get("tiktok") if akquise else None),
         "instagram": instagram_sammeln,
     }
 
@@ -522,7 +552,8 @@ def main():
             status.zaehler(gefunden=gefunden)
             status.schritt("%s: %d Videos gesichtet" % (qname, gefunden))
 
-            durch, stat = vorfilter(kandidaten, bestand_ids, limit=analyse_max)
+            durch, stat = vorfilter(kandidaten, bestand_ids, limit=analyse_max,
+                                    keywords=akquise_keywords)
             print("[lauf] %s: %d gefunden | Vorfilter: %d bekannt, %d zu alt (>%d T), "
                   "%d <%d Views, %d nicht deutsch, %d ohne Thema -> %d neu"
                   % (quelle, gefunden, stat["schon_bekannt"], stat["zu_alt"], MAX_ALTER_TAGE,
@@ -601,6 +632,14 @@ def main():
                 fehler.append(meldung)
 
             n, a = speicher.speichere_videos(durch)
+            if akquise:
+                try:
+                    plan_queries = (scrape_plan.get(quelle)
+                                    if quelle != "instagram"
+                                    else scrape_plan.get("instagram_hashtags"))
+                    themenwelt.markiere_gescrapte(quelle, plan_queries or [])
+                except Exception as e:
+                    print("[lauf] WARNUNG: scrape_status nicht aktualisiert: %s" % e)
             neu, gesamt_neu, gesamt_aktualisiert = n, gesamt_neu + n, gesamt_aktualisiert + a
             status.zaehler(neu=n)
             if n:

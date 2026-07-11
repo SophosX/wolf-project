@@ -258,10 +258,10 @@ def apify_suche_aktiv():
     return (os.environ.get("RADAR_TIKTOK_SUCHE", "1").strip() or "1") != "0"
 
 
-def sammle(watchlist_eintraege):
+def sammle(watchlist_eintraege, queries=None):
     """
     Haupteinstieg fuer lauf.py:
-    (0) Apify-Keyword-Suche (SOCIAL_SUCHQUERIES) — Falschinfos beliebiger Creators,
+    (0) Apify-Keyword-Suche (queries oder SOCIAL_SUCHQUERIES) — Falschinfos beliebiger Creators,
     (a) Watchlist-Profile mit TikTok-Handle,
     (b) Discovery-Profile.
     Rueckgabe: {"kandidaten": [...], "fehler": [...], "such_protokoll": [...]}
@@ -274,10 +274,12 @@ def sammle(watchlist_eintraege):
     if apify_suche_aktiv():
         try:
             import apify_agent
-            from mythen_katalog import SOCIAL_SUCHQUERIES
+            if queries is None:
+                from mythen_katalog import SOCIAL_SUCHQUERIES
+                queries = SOCIAL_SUCHQUERIES
             if apify_agent.verfuegbar():
                 such_kand, such_protokoll = apify_agent.sammle_tiktok_suche(
-                    SOCIAL_SUCHQUERIES, fehler)
+                    queries, fehler)
                 kandidaten.extend(such_kand)
                 print("[tiktok] Apify-Suche: %d Kandidaten" % len(such_kand))
         except Exception as e:

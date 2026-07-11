@@ -66,6 +66,23 @@ def _embed_query(text):
     return (daten.get("embedding") or {}).get("values") or []
 
 
+def embed_text(text, dim=None, task="RETRIEVAL_QUERY"):
+    """Oeffentliches Embedding (auch fuer den Supabase-Modus: match_narrativ-RPC
+    und narrativ_chunks-Befuellung). dim=None nutzt die Dimension des Datei-Index."""
+    koerper = json.dumps({
+        "model": "models/" + EMBED_MODELL,
+        "content": {"parts": [{"text": (text or "")[:1500]}]},
+        "taskType": task,
+        "outputDimensionality": dim or lade_index().get("dim", 512),
+    }).encode("utf-8")
+    anfrage = urllib.request.Request(
+        EMBED_URL, data=koerper, method="POST",
+        headers={"Content-Type": "application/json", "x-goog-api-key": lade_gemini_key()})
+    with urllib.request.urlopen(anfrage, timeout=30) as antwort:
+        daten = json.loads(antwort.read().decode("utf-8"))
+    return (daten.get("embedding") or {}).get("values") or []
+
+
 def _cosinus(a, b):
     skalar = sum(x * y for x, y in zip(a, b))
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))

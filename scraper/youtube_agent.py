@@ -528,10 +528,12 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
     return erfolgreich
 
 
-def sammle(watchlist_eintraege, extra_queries=None):
+def sammle(watchlist_eintraege, extra_queries=None, queries=None):
     """
     Haupteinstieg fuer lauf.py.
-    extra_queries: Zusatz-Queries aus Chris' Vorschlaegen.
+    extra_queries: Zusatz-Queries aus Vorschlaegen des Nutzers.
+    queries: expliziter Query-Satz (Multi-Tenant-Scrape-Plan aus themenwelt.py);
+             None = SUCHQUERIES aus mythen_katalog (Lokal-Betrieb).
     - Modus "apify" (Standard): ALLE SUCHQUERIES pro Lauf, Vorschlaege ADDITIV
       obendrauf (kein Quota-Limit) — via Apify-Scraper.
     - Modus "api": alte YouTube-Data-API-Rotation (Fallback, quota-limitiert).
@@ -546,8 +548,9 @@ def sammle(watchlist_eintraege, extra_queries=None):
         if SUCHE_MODUS == "apify":
             import apify_agent
             extras = [q for q in (extra_queries or []) if q]
-            # additiv: Vorschlaege zuerst, dann alle Standard-Queries ohne Dubletten
-            queries = extras + [q for q in SUCHQUERIES if q not in extras]
+            basis = list(queries) if queries is not None else list(SUCHQUERIES)
+            # additiv: Vorschlaege zuerst, dann der Query-Satz ohne Dubletten
+            queries = extras + [q for q in basis if q not in extras]
             if extras:
                 print("[youtube] Vorschlags-Queries (additiv): %s" % ", ".join(extras))
             such_kand, such_protokoll = apify_agent.sammle_youtube_suche(queries, fehler)

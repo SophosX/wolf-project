@@ -482,10 +482,27 @@ def _supabase_lade_videos():
         seite += 1
 
 
+# Spalten der v2-POOL-Tabelle `videos` (mandantenneutral). Alles Nutzer-
+# spezifische (status/score/scores/skripte/feedback/dublette_von) lebt in
+# video_zuordnung und wird beim Pool-Insert verworfen.
+POOL_FELDER = (
+    "id", "plattform", "video_id", "url", "titel", "kanal", "kanal_id",
+    "kanal_follower", "veroeffentlicht", "views", "likes", "kommentare",
+    "dauer_s", "thumbnail_url", "caption", "transkript", "sprache",
+    "quelle", "quelle_query", "gefunden_am", "claim", "webcheck",
+)
+
+
+def _nur_pool_felder(kandidat):
+    zeile = {k: kandidat.get(k) for k in POOL_FELDER if k in kandidat}
+    zeile.setdefault("gefunden_am", jetzt_iso())
+    return zeile
+
+
 def _supabase_speichere_videos(kandidaten):
     """
     Merge-Semantik wie lokal: bestehende ids -> nur Metriken per PATCH,
-    neue ids -> komplett per POST einfuegen.
+    neue ids -> komplett per POST einfuegen (v2: nur POOL-Spalten).
     """
     bestand = _supabase_lade_videos()
     vorhandene = {}
@@ -515,6 +532,7 @@ def _supabase_speichere_videos(kandidaten):
 
     # Neue Zeilen in Batches einfuegen; ignore-duplicates schuetzt vor Rennen
     # mit parallelen Laeufen (on conflict id: nichts ueberschreiben).
+    neue_zeilen = [_nur_pool_felder(z) for z in neue_zeilen]
     for i in range(0, len(neue_zeilen), 200):
         batch = neue_zeilen[i:i + 200]
         if _supabase_post("videos", batch,
@@ -543,6 +561,24 @@ def _supabase_patch(tabelle, params, felder):
     except Exception as e:
         print("[speicher] Supabase PATCH %s Fehler: %s" % (tabelle, e))
         return False
+
+
+def _supabase_rpc(funktion, argumente):
+    """PostgREST-RPC (z.B. match_narrativ). Rueckgabe: JSON oder None."""
+    if requests is None:
+        return None
+    try:
+        url = os.environ.get("SUPABASE_URL", "").rstrip("/") + "/rest/v1/rpc/" + funktion
+        r = requests.post(url, headers=_supabase_headers(),
+                          data=json.dumps(argumente), timeout=30)
+        if r.status_code >= 400:
+            print("[speicher] Supabase RPC %s fehlgeschlagen: %s %s"
+                  % (funktion, r.status_code, r.text[:200]))
+            return None
+        return r.json()
+    except Exception as e:
+        print("[speicher] Supabase RPC %s Fehler: %s" % (funktion, e))
+        return None
 
 
 def lade_nutzer_aktiv():
@@ -622,6 +658,33 @@ def zugeordnete_video_ids(user_id):
     """IDs aller Videos, die dem Nutzer schon zugeordnet sind (Dedupe der Kuration)."""
     zeilen = lade_zuordnungen(user_id, select="video_id")
     return {z.get("video_id") for z in zeilen if z.get("video_id")}
+
+
+def lade_pool_neu(seit_iso, mit_claim=True):
+    """Pool-Videos fuer die Kuration: seit `seit_iso` gefunden, mit extrahiertem
+    Claim (Stufe A/B gelaufen). Paginierend, komplette Zeilen."""
+    alle, seite = [], 0
+    params_basis = {"select": "*", "gefunden_am": "gte." + seit_iso,
+                    "order": "gefunden_am.desc"}
+    if mit_claim:
+        params_basis["claim"] = "not.is.null"
+    while True:
+        params = dict(params_basis)
+        params["limit"] = "1000"
+        params["offset"] = str(seite * 1000)
+        zeilen = _supabase_get("videos", params)
+        if zeilen is None:
+            return alle
+        alle.extend(zeilen)
+        if len(zeilen) < 1000:
+            return alle
+        seite += 1
+
+
+def speichere_webcheck(video_id, webcheck):
+    """Websuche-Ergebnis am Pool-Video cachen — nachfolgende Nutzer sparen den Call."""
+    return _supabase_patch("videos", {"id": "eq." + str(video_id)},
+                           {"webcheck": webcheck, "aktualisiert_am": jetzt_iso()})
 
 
 # --- Auftrags-Queue (ersetzt .lauf_anfrage im Supabase-Modus) ---------------

@@ -220,15 +220,19 @@ _SCHEMA_SKRIPTE = {
 }
 
 
-def _system_skripte(gelernt):
-    stil = _lade_stilguide_kern()
-    playbook = _lade_playbook_kern()
+def _system_skripte(gelernt, profil=None):
+    profil = profil or {}
+    stil = profil.get("stilguide") or _lade_stilguide_kern()
+    playbook = profil.get("playbook") or _lade_playbook_kern()
     notizen = (gelernt or {}).get("notizen") or []
+    creator = profil.get("creator_beschreibung") or (
+        "den deutschen Fitness-Creator Christian Wolf "
+        "(147k YouTube-Abos, Marke 'Kaloriendefizit plus High Protein')")
+    kern_botschaft = profil.get("kern_botschaft") or "Kaloriendefizit plus High Protein"
 
     teile = [
-        "Du schreibst Reaktions-Skripte für den deutschen Fitness-Creator Christian Wolf "
-        "(147k YouTube-Abos, Marke 'Kaloriendefizit plus High Protein'). Du schreibst "
-        "AUSSCHLIESSLICH in seinem Ton — gesprochene Sprache, die vorgelesen wie Chris klingt.",
+        "Du schreibst Reaktions-Skripte für " + creator + ". Du schreibst "
+        "AUSSCHLIESSLICH in seinem Ton — gesprochene Sprache, die vorgelesen wie er klingt.",
         "=== STILGUIDE (verbindlich) ===\n" + stil,
         "=== REAKTIONS-PLAYBOOK (verbindlich) ===\n" + playbook,
         "=== ESKALATIONS-REGEL FÜR DIESE SKRIPTE ===\n"
@@ -237,7 +241,7 @@ def _system_skripte(gelernt):
         "was stimmt). KEINE Abrechnung, kein Vorführen der Person, keine Motiv-Unterstellungen.",
     ]
     if notizen:
-        teile.append("=== GELERNTES FEEDBACK VON CHRIS (beachten!) ===\n- " + "\n- ".join(notizen))
+        teile.append("=== GELERNTES FEEDBACK DES CREATORS (beachten!) ===\n- " + "\n- ".join(notizen))
     hook_erklaerung = "\n".join(
         "- " + typ + ": " + HOOK_BESCHREIBUNGEN[typ] for typ in HOOK_TYPEN
     )
@@ -251,7 +255,7 @@ def _system_skripte(gelernt):
         "**WIDERLEGUNG** (konkrete Zahlen aus der Recherche, eine nachrechenbare "
         "Dreisatz-/Jahres-Hochrechnung wo möglich, 'die Dosis macht das Gift'-artige Chris-Logik, "
         "Evidenz-Verdichtung statt formaler Zitate) →\n"
-        "**EINORDNUNG** (was stattdessen gilt: Kaloriendefizit plus High Protein, konkrete "
+        "**EINORDNUNG** (was stattdessen gilt: " + kern_botschaft + ", konkrete "
         "Handlungsregel für die Zuschauer) →\n"
         "**CTA** (kurzer Schluss im Chris-Stil).\n"
         "Jede Abschnitts-Überschrift steht ALLEIN auf einer eigenen Zeile (z.B. '**HOOK**'), "
@@ -323,9 +327,12 @@ def _validiere_skripte(daten):
     return nach_typ, fehler
 
 
-def generiere_skripte(video, gelernt):
+def generiere_skripte(video, gelernt, profil=None):
     """
     Erzeugt drei Skript-Varianten nach Kontrakt für ein analysiertes Video.
+    profil: optionales Creator-Profil (Multi-Tenant): {stilguide, playbook,
+    creator_beschreibung, kern_botschaft} — ohne profil gilt der Christian-
+    Lokal-Betrieb (wissen/-Dateien) unveraendert.
 
     Rückgabe: [{"variante": 1..3, "hook_typ": ..., "inhalt_md": ..., "quellen": [...]}, ...]
     quellen: 2-4 echte URLs aus Gemini-google_search-Grounding; leer + Hinweis im Skript,
@@ -342,7 +349,7 @@ def generiere_skripte(video, gelernt):
     time.sleep(analyse.PAUSE_ZWISCHEN_CALLS_S)
 
     # 2) Drei Varianten strukturiert generieren, mit einem Korrektur-Versuch
-    system = _system_skripte(gelernt)
+    system = _system_skripte(gelernt, profil)
     prompt = _skript_prompt(video, recherche_text)
 
     nach_typ, fehler = {}, ["noch kein Versuch"]

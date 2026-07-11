@@ -200,7 +200,7 @@ def _sammle_profile(profil_handles, handle_zu_name, limit, quelle, kandidaten, f
                               % (h, handle_zu_name.get(h, "?")))
 
 
-def sammle_instagram(watchlist, limit_pro_profil=15):
+def sammle_instagram(watchlist, limit_pro_profil=15, hashtags=None):
     """
     Instagram über den Apify-Scraper einsammeln:
     (a) Watchlist-Profile (voll, mit Abdeckungs-Check),
@@ -217,8 +217,10 @@ def sammle_instagram(watchlist, limit_pro_profil=15):
     # (0) Breite Hashtag-Suche via Apify (analog YouTube/TikTok): Funde beliebiger Creators
     if (os.environ.get("RADAR_IG_HASHTAG_SUCHE", "1").strip() or "1") != "0":
         try:
-            from mythen_katalog import SOCIAL_HASHTAGS
-            hkand, such_protokoll = sammle_instagram_hashtags(SOCIAL_HASHTAGS, fehler)
+            if hashtags is None:
+                from mythen_katalog import SOCIAL_HASHTAGS
+                hashtags = SOCIAL_HASHTAGS
+            hkand, such_protokoll = sammle_instagram_hashtags(hashtags, fehler)
             kandidaten.extend(hkand)
         except Exception as e:
             fehler.append("apify instagram-hashtags: %s" % e)

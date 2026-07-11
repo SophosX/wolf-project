@@ -4,19 +4,34 @@
 # feuern bei :00) — wer den Lock -n nicht bekommt, bricht in 3-6 ms ab, OHNE zu
 # laufen. Genau das hat ~50 % der geplanten Läufe still verschluckt. Blockierend
 # wartet der Lauf die Millisekunden des Minuten-Jobs aus und startet dann normal.
+#
+# Multi-Tenant (DATEN_MODUS=supabase): lauf.py läuft automatisch als AKQUISE
+# (geteilter Pool, nur Claim-Extraktion); kuration.py verteilt danach pro Nutzer.
+# Im Lokal-Modus sind kuration.py/worker.py No-Ops — der Zeitplan ist für beide
+# Modi derselbe.
 0 */4 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'
 30 5 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u lauf.py --nur instagram && python3 -u lauf.py --transkribiere'
-# Rezepte-Radar: taeglich neue Community-Rezepte suchen + Chris-Fit bewerten.
+# Kuration 45 min nach der Akquise: 06:45 ALLE Nutzer (einziger Free-Slot des
+# Tages), sonst nur Pro (alle 4 h). Supabase-only (Lokal: sofortiger Exit 0).
+45 6 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u kuration.py --alle'
+45 2,10,14,18,22 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u kuration.py --alle --nur-pro'
+# Profil-Lerner: lebende Trigger-Listen aus dem Feedback fortschreiben (03:00).
+0 3 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && [ -f profil_lerner.py ] && python3 -u profil_lerner.py --alle || true'
+# Rezepte-Radar: taeglich neue Community-Rezepte suchen + Fit bewerten.
 # 08:30 UTC = kurz NACH dem YouTube-Quota-Reset (Mitternacht Pacific Time),
 # damit die Rezept-Suche nie in ein leeres Tages-Kontingent laeuft.
 30 8 * * * flock /tmp/radar.lock sh -c 'cd /app/scraper && python3 -u rezepte_agent.py'
-# "Jetzt suchen" aus der App: /agenten legt daten/.lauf_anfrage an; hier minuetlich
-# geprueft. Flag-Check steht VOR flock, damit der Minuten-Job den Lock 99 % der Zeit
-# gar nicht anfasst (sonst Race mit dem 4-h-Job bei :00). Nur wenn die Flag-Datei
-# existiert, wird der Lock genommen und der Lauf gestartet.
+# "Jetzt suchen" aus der App:
+# - Lokal-Modus: /agenten legt daten/.lauf_anfrage an; hier minuetlich geprueft.
+#   Flag-Check steht VOR flock, damit der Minuten-Job den Lock 99 % der Zeit
+#   gar nicht anfasst (sonst Race mit dem 4-h-Job bei :00).
+# - Supabase-Modus: Auftrags-Queue (Tabelle auftraege) via worker.py — claimt
+#   Auftraege atomar (lauf/kuration/onboarding/lerner). worker.py ist im
+#   Lokal-Modus ein No-Op, der Flag-Job im Supabase-Modus (keine Flag-Datei).
 # Abschliessendes "|| true": ohne Flag-Datei liefert [ -f ] via && Exit 1 -> der
 # Cron-Runner loggt das sonst jede Minute als Error (~1440 Fehlzeilen/Tag), in denen
 # ein echter Fehler untergeht. Der Idle-Fall soll sauber mit 0 enden.
 * * * * * { [ -f /app/daten/.lauf_anfrage ] && flock -n /tmp/radar.lock sh -c 'rm -f /app/daten/.lauf_anfrage; cd /app/scraper && python3 -u lauf.py --nur youtube,tiktok'; } || true
+* * * * * { [ -n "$SUPABASE_URL" ] && flock -n /tmp/radar-worker.lock sh -c 'cd /app/scraper && python3 -u worker.py'; } || true
 # Optional (einkommentieren): yt-dlp/gallery-dl wöchentlich frisch ziehen
 # 0 4 * * 1 pip install -q -U yt-dlp gallery-dl
