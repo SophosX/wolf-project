@@ -17,10 +17,17 @@ interface Thema {
 interface TriggerEintrag {
   trigger: string;
 }
+interface InteressenChip {
+  slug: string;
+  label: string;
+  emoji: string;
+  gewaehlt: boolean;
+}
 interface OnboardingDaten {
   status: string;
   fortschritt: string | null;
   import_status: string | null;
+  interessen?: InteressenChip[];
   profil: {
     nische: string | null;
     marke: string | null;
@@ -65,6 +72,8 @@ export default function OnboardingSeite() {
   const [plattform, setPlattform] = useState("youtube");
   const [marke, setMarke] = useState("");
   const [fokus, setFokus] = useState("");
+  const [labels, setLabels] = useState<string[]>([]);
+  const [ohneKanal, setOhneKanal] = useState(false);
 
   // Schritt 3
   const [triggerText, setTriggerText] = useState<string | null>(null);
@@ -100,12 +109,21 @@ export default function OnboardingSeite() {
   async function starteImport(e: React.FormEvent) {
     e.preventDefault();
     setFehler(null);
+    if (ohneKanal && labels.length === 0) {
+      setFehler("Ohne Kanal brauchen wir mindestens ein Interesse als Startpunkt.");
+      return;
+    }
     setLaeuft(true);
     try {
       const res = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kanaele: [{ plattform, handle }], marke, fokus }),
+        body: JSON.stringify({
+          kanaele: ohneKanal ? [] : [{ plattform, handle }],
+          marke,
+          fokus,
+          labels,
+        }),
       });
       const d = await res.json();
       if (!res.ok) setFehler(d.fehler || "Start fehlgeschlagen.");
@@ -113,6 +131,12 @@ export default function OnboardingSeite() {
     } finally {
       setLaeuft(false);
     }
+  }
+
+  function toggleLabel(slug: string) {
+    setLabels((alt) =>
+      alt.includes(slug) ? alt.filter((l) => l !== slug) : [...alt, slug]
+    );
   }
 
   async function abschliessen() {
@@ -163,27 +187,68 @@ export default function OnboardingSeite() {
           </div>
 
           <div className="karte" style={{ padding: 16, marginTop: 12 }}>
-            <div className="abschnitt-titel">1 · Deinen Content verbinden</div>
+            <div className="abschnitt-titel">1 · Was interessiert dich?</div>
             <p style={{ color: "var(--text-dim)", fontSize: 14 }}>
-              Nur öffentliche Daten — kein Login bei YouTube/TikTok nötig.
+              Wähle deine Bereiche — damit weiß dein Radar <b>sofort</b>, wo es
+              suchen soll. Dein Kanal-Import verfeinert das gleich noch.
             </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <select value={plattform} onChange={(e) => setPlattform(e.target.value)}>
-                <option value="youtube">YouTube</option>
-                <option value="tiktok">TikTok</option>
-              </select>
-              <input
-                placeholder="@dein-handle"
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                required
-                style={{ flex: 1, minWidth: 200 }}
-              />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+              {(daten.interessen || []).map((b) => {
+                const aktiv = labels.includes(b.slug);
+                return (
+                  <button
+                    key={b.slug}
+                    type="button"
+                    onClick={() => toggleLabel(b.slug)}
+                    className="btn"
+                    style={{
+                      borderRadius: 20,
+                      padding: "7px 14px",
+                      background: aktiv ? "var(--akzent)" : undefined,
+                      color: aktiv ? "#000" : undefined,
+                      fontWeight: aktiv ? 600 : 400,
+                    }}
+                  >
+                    {b.emoji} {b.label} {aktiv ? "✓" : ""}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div className="karte" style={{ padding: 16, marginTop: 12 }}>
-            <div className="abschnitt-titel">2 · Deinen Fokus beschreiben</div>
+            <div className="abschnitt-titel">2 · Deinen Content verbinden</div>
+            <p style={{ color: "var(--text-dim)", fontSize: 14 }}>
+              Nur öffentliche Daten — kein Login bei YouTube/TikTok nötig. Aus
+              deinen Videos lernt das Radar deine Positionen und deinen Ton.
+            </p>
+            {!ohneKanal && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <select value={plattform} onChange={(e) => setPlattform(e.target.value)}>
+                  <option value="youtube">YouTube</option>
+                  <option value="tiktok">TikTok</option>
+                </select>
+                <input
+                  placeholder="@dein-handle"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  required={!ohneKanal}
+                  style={{ flex: 1, minWidth: 200 }}
+                />
+              </div>
+            )}
+            <label style={{ display: "block", marginTop: 8, color: "var(--text-dim)", fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={ohneKanal}
+                onChange={(e) => setOhneKanal(e.target.checked)}
+              />{" "}
+              Später verbinden — erstmal nur mit meinen Interessen starten
+            </label>
+          </div>
+
+          <div className="karte" style={{ padding: 16, marginTop: 12 }}>
+            <div className="abschnitt-titel">3 · Deinen Fokus beschreiben</div>
             <p style={{ color: "var(--text-dim)", fontSize: 14 }}>
               Worauf willst du reagieren? Je konkreter, desto besser trifft dein
               Radar von Anfang an. (Optional, aber sehr empfohlen.)
@@ -204,10 +269,16 @@ export default function OnboardingSeite() {
           </div>
 
           <button className="btn primaer" type="submit" disabled={laeuft} style={{ marginTop: 14 }}>
-            {laeuft ? "Startet …" : "Meine Videos analysieren →"}
+            {laeuft
+              ? "Startet …"
+              : ohneKanal
+                ? "Radar mit meinen Interessen starten →"
+                : "Meine Videos analysieren →"}
           </button>
           <p style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 6 }}>
-            Dauert je nach Kanalgröße 5–15 Minuten. Du siehst live, was passiert.
+            {ohneKanal
+              ? "Du bekommst sofort ein Start-Profil aus deinen Interessen — den Kanal kannst du jederzeit nachziehen."
+              : "Dauert je nach Kanalgröße 5–15 Minuten. Du siehst live, was passiert."}
           </p>
         </form>
       )}

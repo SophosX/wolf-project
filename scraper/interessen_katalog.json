@@ -1,0 +1,263 @@
+{
+  "_kommentar": "Interessen-Katalog fuers Onboarding: klickbare Bereiche mit Starter-Packs (Themen/Queries/Trigger). EINE Quelle fuer App (lib/interessen.ts) und Scraper. Queries sind CLAIM-formuliert (so klingt die Falschbehauptung).",
+  "bereiche": [
+    {
+      "slug": "ernaehrung",
+      "label": "Ernährung & Abnehmen",
+      "emoji": "🥗",
+      "themen": [
+        { "slug": "abnehm_mythen", "name": "Abnehm-Mythen & Wundermittel", "kerngewicht": 0.9,
+          "keywords": ["abnehmen", "diät", "stoffwechsel", "fettverbrennung", "wundermittel", "detox"] },
+        { "slug": "ernaehrungs_angstmache", "name": "Angstmache vor Lebensmitteln", "kerngewicht": 0.8,
+          "keywords": ["zucker", "süßstoff", "aspartam", "giftig", "chemie", "zusatzstoffe"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Mit diesem Trick 10 Kilo in 2 Wochen abnehmen" },
+        { "plattform": "youtube", "query": "Diese Lebensmittel vergiften dich täglich" },
+        { "plattform": "tiktok", "query": "abnehmen ohne kaloriendefizit trick" },
+        { "plattform": "tiktok", "query": "detox kur entgiften" },
+        { "plattform": "instagram", "query": "abnehmen" }
+      ],
+      "trigger": [
+        "Wunderdiäten mit unrealistischen Versprechen (X Kilo in Y Tagen).",
+        "Angstmache vor einzelnen Lebensmitteln oder Zusatzstoffen ohne Studienlage."
+      ]
+    },
+    {
+      "slug": "fitness",
+      "label": "Fitness & Training",
+      "emoji": "💪",
+      "themen": [
+        { "slug": "trainings_mythen", "name": "Trainings-Mythen", "kerngewicht": 0.85,
+          "keywords": ["muskelaufbau", "fettverbrennungspuls", "nachbrenneffekt", "spot reduction", "bauchfett"] },
+        { "slug": "supplement_hype", "name": "Supplement-Hype", "kerngewicht": 0.8,
+          "keywords": ["supplement", "booster", "testosteron", "fatburner", "kreatin"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Gezielt Bauchfett verbrennen mit diesen Übungen" },
+        { "plattform": "youtube", "query": "Dieses Supplement ersetzt dein Training" },
+        { "plattform": "tiktok", "query": "testosteron natürlich verdoppeln" },
+        { "plattform": "instagram", "query": "fatburner" }
+      ],
+      "trigger": [
+        "Versprechen gezielter lokaler Fettverbrennung (Spot Reduction).",
+        "Supplements, die Training oder Kaloriendefizit ersetzen sollen."
+      ]
+    },
+    {
+      "slug": "finanzen",
+      "label": "Finanzen & Geldanlage",
+      "emoji": "💰",
+      "themen": [
+        { "slug": "rendite_versprechen", "name": "Unrealistische Rendite-Versprechen", "kerngewicht": 0.9,
+          "keywords": ["rendite", "passives einkommen", "reich werden", "finanzielle freiheit", "dividende"] },
+        { "slug": "anlage_scams", "name": "Anlage-Scams & Schneeballsysteme", "kerngewicht": 0.9,
+          "keywords": ["schneeballsystem", "mlm", "network marketing", "scam", "betrug"] },
+        { "slug": "steuer_tricks", "name": "Gefährliche Steuer-Tricks", "kerngewicht": 0.7,
+          "keywords": ["steuern sparen", "steuertrick", "gmbh gründen", "auswandern steuern"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "So wirst du mit 1000 Euro im Monat finanziell frei" },
+        { "plattform": "youtube", "query": "Mit diesem Steuertrick zahlst du nie wieder Steuern" },
+        { "plattform": "tiktok", "query": "passives einkommen sofort reich" },
+        { "plattform": "tiktok", "query": "network marketing nebeneinkommen" },
+        { "plattform": "instagram", "query": "finanziellefreiheit" }
+      ],
+      "trigger": [
+        "Unrealistische Renditeversprechen ohne Risikohinweis.",
+        "Schneeballsysteme und MLM als 'passives Einkommen' verkauft.",
+        "Steuer-'Tricks', die faktisch Steuerhinterziehung sind."
+      ]
+    },
+    {
+      "slug": "krypto",
+      "label": "Krypto & Trading",
+      "emoji": "🪙",
+      "themen": [
+        { "slug": "krypto_hype", "name": "Krypto-Hype & Pump-Schemes", "kerngewicht": 0.9,
+          "keywords": ["bitcoin", "krypto", "altcoin", "100x", "moon", "presale"] },
+        { "slug": "trading_gurus", "name": "Trading-Gurus & Signalgruppen", "kerngewicht": 0.85,
+          "keywords": ["daytrading", "trading signale", "hebel", "forex", "chartanalyse"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Dieser Coin macht 100x noch diesen Monat" },
+        { "plattform": "youtube", "query": "Vom Daytrading leben so gehts garantiert" },
+        { "plattform": "tiktok", "query": "krypto geheimtipp presale" },
+        { "plattform": "tiktok", "query": "trading signale gratis gruppe" },
+        { "plattform": "instagram", "query": "daytrading" }
+      ],
+      "trigger": [
+        "Pump-and-Dump-Coins und Presale-'Geheimtipps'.",
+        "Trading-Gurus mit gefälschten Kontoauszügen und Signalgruppen-Abzocke."
+      ]
+    },
+    {
+      "slug": "medizin",
+      "label": "Medizin & Gesundheit",
+      "emoji": "🩺",
+      "themen": [
+        { "slug": "heilsversprechen", "name": "Heilsversprechen & Wundermittel", "kerngewicht": 0.9,
+          "keywords": ["heilung", "krebs", "wundermittel", "naturheilmittel", "selbstheilung"] },
+        { "slug": "medizin_verschwoerung", "name": "Pharma-Verschwörungen", "kerngewicht": 0.8,
+          "keywords": ["big pharma", "impfung", "unterdrückt", "schulmedizin", "nebenwirkungen verschwiegen"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Diese natürliche Heilmethode wird von Ärzten verschwiegen" },
+        { "plattform": "youtube", "query": "Krankheit XY ohne Medikamente heilen" },
+        { "plattform": "tiktok", "query": "hausmittel heilt alles" },
+        { "plattform": "instagram", "query": "naturheilkunde" }
+      ],
+      "trigger": [
+        "Heilsversprechen bei ernsten Krankheiten, die von echter Therapie abhalten.",
+        "'Das verschweigt dir Big Pharma'-Narrative ohne Belege."
+      ]
+    },
+    {
+      "slug": "psychologie",
+      "label": "Psychologie & Mindset",
+      "emoji": "🧠",
+      "themen": [
+        { "slug": "pop_psychologie", "name": "Pop-Psychologie & Küchendiagnosen", "kerngewicht": 0.8,
+          "keywords": ["narzisst", "trauma", "adhs", "toxisch", "bindungstyp", "manifestieren"] },
+        { "slug": "mindset_gurus", "name": "Mindset-Gurus & Hustle-Culture", "kerngewicht": 0.75,
+          "keywords": ["mindset", "erfolg", "manifestation", "gesetz der anziehung", "high performer"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "5 Anzeichen dass dein Partner ein Narzisst ist" },
+        { "plattform": "youtube", "query": "Mit Manifestieren alles erreichen Anleitung" },
+        { "plattform": "tiktok", "query": "anzeichen adhs test" },
+        { "plattform": "instagram", "query": "manifestieren" }
+      ],
+      "trigger": [
+        "Ferndiagnosen und Diagnose-Checklisten ohne fachliche Grundlage.",
+        "Manifestations-Versprechen, die reale Probleme wegcoachen."
+      ]
+    },
+    {
+      "slug": "tech",
+      "label": "Tech & KI",
+      "emoji": "🤖",
+      "themen": [
+        { "slug": "ki_hype", "name": "KI-Hype & Fehlinformationen", "kerngewicht": 0.85,
+          "keywords": ["ki", "künstliche intelligenz", "chatgpt", "agi", "ersetzt jobs"] },
+        { "slug": "tech_scams", "name": "Tech-Verkaufsmaschen", "kerngewicht": 0.7,
+          "keywords": ["gadget", "wunder-app", "gratis geld app", "hack", "trick"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Mit dieser KI App verdienst du 500 Euro am Tag" },
+        { "plattform": "youtube", "query": "KI ersetzt alle Jobs bis 2027" },
+        { "plattform": "tiktok", "query": "geld verdienen mit ki automatisch" },
+        { "plattform": "instagram", "query": "kiverdienst" }
+      ],
+      "trigger": [
+        "'Mit KI automatisch Geld verdienen'-Maschen.",
+        "Technisch falsche KI-Panik oder -Heilsversprechen."
+      ]
+    },
+    {
+      "slug": "beauty",
+      "label": "Beauty & Skincare",
+      "emoji": "✨",
+      "themen": [
+        { "slug": "skincare_mythen", "name": "Skincare-Mythen", "kerngewicht": 0.85,
+          "keywords": ["hautpflege", "anti aging", "kollagen", "porentief", "naturkosmetik"] },
+        { "slug": "beauty_wundermittel", "name": "Beauty-Wundermittel", "kerngewicht": 0.8,
+          "keywords": ["falten weg", "haarwuchs", "wimpernserum", "abnehmpflaster", "gua sha"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Falten für immer loswerden mit diesem Hausmittel" },
+        { "plattform": "tiktok", "query": "hautpflege trick viral hausmittel" },
+        { "plattform": "tiktok", "query": "kollagen trinken jünger aussehen" },
+        { "plattform": "instagram", "query": "antiaging" }
+      ],
+      "trigger": [
+        "Wundermittel gegen Falten/Haarausfall ohne jede Evidenz.",
+        "Gefährliche DIY-Hautpflege-Trends."
+      ]
+    },
+    {
+      "slug": "klima",
+      "label": "Klima & Energie",
+      "emoji": "🌍",
+      "themen": [
+        { "slug": "klima_fakes", "name": "Klima-Falschinformationen", "kerngewicht": 0.85,
+          "keywords": ["klimawandel", "co2", "erneuerbare", "klimalüge", "eiszeit"] },
+        { "slug": "energie_mythen", "name": "Energie-Mythen", "kerngewicht": 0.75,
+          "keywords": ["windkraft", "solar", "atomkraft", "blackout", "e-auto"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Der Klimawandel ist ein natürlicher Zyklus Beweis" },
+        { "plattform": "youtube", "query": "E-Autos sind schlimmer für die Umwelt als Verbrenner" },
+        { "plattform": "tiktok", "query": "klimalüge beweis" },
+        { "plattform": "instagram", "query": "klimawandel" }
+      ],
+      "trigger": [
+        "Klimawandel-Leugnung mit rosinengepickten Daten.",
+        "Pauschale Falschbehauptungen über erneuerbare Energien oder E-Mobilität."
+      ]
+    },
+    {
+      "slug": "recht",
+      "label": "Recht & Steuern",
+      "emoji": "⚖️",
+      "themen": [
+        { "slug": "rechts_mythen", "name": "Rechts-Mythen & gefährliche Halbwahrheiten", "kerngewicht": 0.85,
+          "keywords": ["legal", "illegal", "vertrag", "kündigung", "abmahnung", "dsgvo"] },
+        { "slug": "reichsbuerger_narrative", "name": "Scheinrecht & Souveränitäts-Mythen", "kerngewicht": 0.7,
+          "keywords": ["brd gmbh", "souverän", "personalausweis", "gez"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Mit diesem Trick musst du keine GEZ zahlen" },
+        { "plattform": "youtube", "query": "Diesen Vertrag kannst du einfach ignorieren" },
+        { "plattform": "tiktok", "query": "rechtstrick legal geld" },
+        { "plattform": "instagram", "query": "rechtstipps" }
+      ],
+      "trigger": [
+        "'Legale Tricks', die Zuschauer in echte Rechtsprobleme bringen.",
+        "Scheinrechtliche Narrative (BRD-GmbH & Co.)."
+      ]
+    },
+    {
+      "slug": "eltern",
+      "label": "Elternschaft & Erziehung",
+      "emoji": "👶",
+      "themen": [
+        { "slug": "erziehungs_mythen", "name": "Erziehungs-Mythen", "kerngewicht": 0.8,
+          "keywords": ["erziehung", "schreien lassen", "bindung", "schlaftraining", "beikost"] },
+        { "slug": "kinder_gesundheit_fakes", "name": "Kindergesundheit-Fakes", "kerngewicht": 0.85,
+          "keywords": ["impfen kinder", "fieber", "hausmittel kind", "zucker hyperaktiv"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Warum du dein Kind niemals impfen lassen solltest" },
+        { "plattform": "tiktok", "query": "hausmittel baby krank" },
+        { "plattform": "tiktok", "query": "schlaftraining baby gefährlich" },
+        { "plattform": "instagram", "query": "erziehungstipps" }
+      ],
+      "trigger": [
+        "Medizinische Falschinfos, die Kinder gefährden.",
+        "Absolutistische Erziehungs-Dogmen ohne Evidenz."
+      ]
+    },
+    {
+      "slug": "wissenschaft",
+      "label": "Wissenschaft allgemein",
+      "emoji": "🔬",
+      "themen": [
+        { "slug": "studien_verdreher", "name": "Verdrehte Studien & Pseudowissenschaft", "kerngewicht": 0.85,
+          "keywords": ["studie beweist", "wissenschaftler warnen", "quantenphysik", "frequenzen", "energie"] },
+        { "slug": "verschwoerungs_narrative", "name": "Verschwörungs-Narrative", "kerngewicht": 0.75,
+          "keywords": ["verschwörung", "eliten", "vertuscht", "mainstream lügt", "aufwachen"] }
+      ],
+      "queries": [
+        { "plattform": "youtube", "query": "Neue Studie beweist was Wissenschaftler jahrelang verschwiegen" },
+        { "plattform": "youtube", "query": "Diese Frequenz heilt deinen Körper" },
+        { "plattform": "tiktok", "query": "frequenzen heilung 528hz" },
+        { "plattform": "instagram", "query": "quantenheilung" }
+      ],
+      "trigger": [
+        "Einzelstudien, die zu Sensations-Schlussfolgerungen verdreht werden.",
+        "Pseudowissenschaft mit Physik-Vokabular (Quanten, Frequenzen, Energie)."
+      ]
+    }
+  ]
+}

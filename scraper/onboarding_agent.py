@@ -236,10 +236,12 @@ def _slugify(text):
     return s.strip("_")[:40] or "thema"
 
 
-def map_reduce(kandidaten, fehler, fokus_text="", user_id=None):
+def map_reduce(kandidaten, fehler, fokus_text="", user_id=None,
+               labels=None, bestehende_themen=None):
     """Gemini-Map ueber Transkript-Batches, dann Reduce zum Profil.
-    fokus_text: Freitext-Wunsch des Nutzers aus dem Wizard ("Worauf willst du
-    reagieren?") — fliesst als Leitplanke in den Reduce-Prompt ein."""
+    fokus_text: Freitext-Wunsch des Nutzers ("Worauf willst du reagieren?").
+    labels/bestehende_themen: gewaehlte Interessen-Bereiche + schon angelegte
+    Starter-Themen — der Reduce soll MERGEN statt Duplikate zu erfinden."""
     mit_material = [k for k in kandidaten if (k.get("transkript") or k.get("caption"))]
     teil_analysen = []
     for i in range(0, len(mit_material), MAP_BATCH):
@@ -273,6 +275,16 @@ def map_reduce(kandidaten, fehler, fokus_text="", user_id=None):
         prompt_teile.append("FOKUS-WUNSCH DES CREATORS (Leitplanke fuer Themen/"
                             "Queries/Trigger — hoeher gewichten, was dazu passt):\n"
                             + fokus_text[:600])
+    if labels:
+        prompt_teile.append("GEWAEHLTE INTERESSEN-BEREICHE DES CREATORS: "
+                            + ", ".join(str(l) for l in labels))
+    if bestehende_themen:
+        vorhanden = ["%s (%s)" % (t.get("slug"), t.get("name"))
+                     for t in bestehende_themen][:30]
+        prompt_teile.append(
+            "BEREITS ANGELEGTE THEMEN DES NUTZERS (WICHTIG: nutze diese slugs "
+            "wieder, wo inhaltlich passend — MERGE statt Duplikat; erfinde nur "
+            "fuer wirklich NEUE Themen neue slugs):\n" + "\n".join(vorhanden))
     try:
         profil = analyse.gemini_json(
             "\n\n".join(prompt_teile),
@@ -394,8 +406,12 @@ def main():
                  "wie du sprichst und wofuer du stehst …" % (mit_transkript, len(kandidaten)))
 
     # --- 3) Map-Reduce ---------------------------------------------------------
-    fokus_text = ((profil.get("interessen_profil") or {}).get("fokus_text") or "").strip()
-    ergebnis = map_reduce(kandidaten, fehler, fokus_text=fokus_text, user_id=uid)
+    interessen = profil.get("interessen_profil") or {}
+    fokus_text = (interessen.get("fokus_text") or "").strip()
+    labels = interessen.get("interessen_labels") or []
+    bestehende_themen = speicher.lade_themen(uid, nur_aktive=False)
+    ergebnis = map_reduce(kandidaten, fehler, fokus_text=fokus_text, user_id=uid,
+                          labels=labels, bestehende_themen=bestehende_themen)
     if not ergebnis:
         print("[onboarding] Map-Reduce lieferte nichts — Status zurueck auf offen.")
         speicher._supabase_patch("profiles", {"id": "eq." + uid},
@@ -419,7 +435,12 @@ def main():
     })
 
     themen_zeilen = []
-    for t in (ergebnis.get("themen") or [])[:plan_limits.limits(plan)["themen"]]:
+    themen_platz = max(0, plan_limits.limits(plan)["themen"]
+                       - len([t for t in bestehende_themen
+                              if (ergebnis.get("themen") or []) and t.get("slug")
+                              not in {_slugify(x.get("slug") or x.get("name"))
+                                      for x in ergebnis.get("themen") or []}]))
+    for t in (ergebnis.get("themen") or [])[:themen_platz]:
         themen_zeilen.append({
             "user_id": uid, "slug": _slugify(t.get("slug") or t.get("name")),
             "name": t.get("name") or "?",

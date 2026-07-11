@@ -47,6 +47,17 @@ _SCHEMA_LERNER = {
             "belege": {"type": "ARRAY", "items": {"type": "STRING"},
                        "description": "video_ids aus dem Feedback, die den Trigger stuetzen"},
         }, "required": ["trigger", "staerke"]}},
+        "themen_vorschlaege": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
+            "slug": {"type": "STRING"}, "name": {"type": "STRING"},
+            "keywords": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "begruendung": {"type": "STRING"}},
+            "required": ["slug", "name", "keywords"]},
+            "description": "max. 2 NEUE Themen, die das Feedback nahelegt (nur bei klarem Muster)"},
+        "query_vorschlaege": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
+            "plattform": {"type": "STRING", "enum": ["youtube", "tiktok", "instagram"]},
+            "query": {"type": "STRING"}},
+            "required": ["plattform", "query"]},
+            "description": "max. 3 claim-formulierte Suchanfragen zu Luecken, die das Feedback zeigt"},
     },
     "required": ["trigger"],
 }
@@ -63,7 +74,14 @@ Schreibe die Liste um:
   konkret ('Angstmache vor X ohne Studienlage'), keine Dopplung bestehender Trigger.
 - FORMULIERE bestehende Trigger präziser, wenn das Feedback das hergibt.
 - Behalte staerke-Werte plausibel (0-1); maximal """ + str(MAX_TRIGGER) + """ Einträge,
-  die stärksten zuerst. Gib die KOMPLETTE neue Liste zurück."""
+  die stärksten zuerst. Gib die KOMPLETTE neue Liste zurück.
+
+ZUSÄTZLICH (Vorschlags-Modus, konservativ): Wenn das Feedback KLARE Lücken zeigt
+(der Nutzer nimmt wiederholt Videos zu einem Thema an, das seine Themen-Liste
+nicht abdeckt), schlage maximal 2 neue Themen (slug snake_case, 4-8 deutsche
+Keywords) und maximal 3 claim-formulierte Suchanfragen vor. Diese werden dem
+Nutzer NUR VORGESCHLAGEN (er bestätigt sie in den Einstellungen) — im Zweifel
+leere Listen."""
 
 
 def _iso_jetzt():
@@ -148,8 +166,11 @@ def lerne_nutzer(user_id):
             "kommentare": kommentare[:2],
         })
 
+    themen_bestand = speicher.lade_themen(user_id, nur_aktive=False)
     alte_liste = zerfall_anwenden(aktuelle)
-    prompt = ("AKTUELLE TRIGGER-LISTE:\n"
+    prompt = ("BESTEHENDE THEMEN DES NUTZERS: "
+              + ", ".join(t.get("slug", "?") for t in themen_bestand)
+              + "\n\nAKTUELLE TRIGGER-LISTE:\n"
               + json.dumps([{"trigger": t.get("trigger"), "staerke": t.get("staerke"),
                              "quelle": t.get("quelle")} for t in alte_liste],
                            ensure_ascii=False)
@@ -189,6 +210,37 @@ def lerne_nutzer(user_id):
     neue_liste.sort(key=lambda t: -float(t.get("staerke") or 0))
 
     speicher.speichere_profil(user_id, {"reaktions_ausloeser": neue_liste[:MAX_TRIGGER + 5]})
+
+    # --- Themen-/Query-Vorschlaege (aktiv=false — Nutzer bestaetigt in /einstellungen)
+    vorhandene_slugs = {t.get("slug") for t in themen_bestand}
+    themen_vorschlaege = []
+    for tv in (daten.get("themen_vorschlaege") or [])[:2]:
+        slug = (tv.get("slug") or "").strip().lower().replace("-", "_")[:40]
+        if not slug or slug in vorhandene_slugs:
+            continue
+        themen_vorschlaege.append({
+            "user_id": str(user_id), "slug": slug,
+            "name": tv.get("name") or slug,
+            "keywords": [k.lower() for k in (tv.get("keywords") or []) if k][:10],
+            "kerngewicht": 0.7, "aktiv": False, "quelle": "lerner",
+        })
+    if themen_vorschlaege:
+        speicher._supabase_post("themen", themen_vorschlaege,
+                                prefer="return=minimal,resolution=ignore-duplicates")
+    query_vorschlaege = [{
+        "user_id": str(user_id),
+        "plattform": qv.get("plattform") or "youtube",
+        "query": (qv.get("query") or "").strip(),
+        "aktiv": False, "quelle": "lerner",
+    } for qv in (daten.get("query_vorschlaege") or [])[:3]
+        if (qv.get("query") or "").strip()]
+    if query_vorschlaege:
+        speicher._supabase_post("suchqueries", query_vorschlaege,
+                                prefer="return=minimal,resolution=ignore-duplicates")
+    if themen_vorschlaege or query_vorschlaege:
+        print("[lerner] %s: %d Themen- + %d Query-Vorschlaege abgelegt (aktiv=false)"
+              % (user_id, len(themen_vorschlaege), len(query_vorschlaege)))
+
     speicher.speichere_agent_run({
         "user_id": str(user_id), "typ": "lerner", "quelle": "profil_lerner",
         "gefunden": len(feedback), "analysiert": len(alte_liste),

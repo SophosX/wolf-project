@@ -9,12 +9,19 @@ interface Thema { slug: string; name: string; kerngewicht: number; aktiv: boolea
 interface Query { id: number; plattform: string; query: string; aktiv: boolean }
 interface Person { id: number; name: string; plattform: string | null; handle: string | null; folgt: boolean }
 interface Trigger { trigger: string; staerke?: number; quelle?: string }
+interface InteressenChip { slug: string; label: string; emoji: string; gewaehlt: boolean }
+interface Vorschlaege {
+  themen: { slug: string; name: string; keywords: string[] }[];
+  queries: { id: number; plattform: string; query: string }[];
+}
 interface Daten {
   status: string;
   profil: { nische: string | null; marke: string | null; reaktions_ausloeser: Trigger[] } | null;
   themen: Thema[];
   queries: Query[];
   personen: Person[];
+  interessen?: InteressenChip[];
+  vorschlaege?: Vorschlaege;
 }
 
 export default function EinstellungenSeite() {
@@ -30,6 +37,7 @@ export default function EinstellungenSeite() {
   const [neueQuery, setNeueQuery] = useState("");
   const [neuePlattform, setNeuePlattform] = useState("youtube");
   const [loeschListe, setLoeschListe] = useState<number[]>([]);
+  const [labelEntwurf, setLabelEntwurf] = useState<string[] | null>(null);
 
   const lade = useCallback(async () => {
     try {
@@ -53,6 +61,21 @@ export default function EinstellungenSeite() {
   useEffect(() => {
     lade();
   }, [lade]);
+
+  async function vorschlagAktion(
+    typ: "thema" | "query",
+    ident: string | number,
+    aktion: "uebernehmen" | "verwerfen"
+  ) {
+    await fetch("/api/onboarding", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vorschlag: { typ, aktion, ...(typ === "thema" ? { slug: ident } : { id: ident }) },
+      }),
+    });
+    await lade();
+  }
 
   async function kontoLoeschen() {
     const sicher = window.prompt(
@@ -80,6 +103,7 @@ export default function EinstellungenSeite() {
     setMeldung(null);
     try {
       const body: Record<string, unknown> = { themen_aktiv: themenAb };
+      if (labelEntwurf !== null) body.labels_setzen = labelEntwurf;
       if (marke !== null) body.marke = marke;
       if (nische !== null) body.nische = nische;
       if (triggerText !== null) {
@@ -139,6 +163,80 @@ export default function EinstellungenSeite() {
           />
         </label>
       </div>
+
+      {daten.interessen && daten.interessen.length > 0 && (
+        <div className="karte" style={{ padding: 16, marginTop: 12 }}>
+          <div className="abschnitt-titel">Deine Interessen-Bereiche</div>
+          <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
+            Neu angewählte Bereiche bringen sofort Start-Themen und Suchanfragen
+            mit; abgewählte deaktivieren ihre Themen (nichts geht verloren).
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+            {daten.interessen.map((b) => {
+              const gewaehlt = labelEntwurf
+                ? labelEntwurf.includes(b.slug)
+                : b.gewaehlt;
+              return (
+                <button
+                  key={b.slug}
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    const basis =
+                      labelEntwurf ??
+                      (daten.interessen || []).filter((x) => x.gewaehlt).map((x) => x.slug);
+                    setLabelEntwurf(
+                      gewaehlt ? basis.filter((l) => l !== b.slug) : [...basis, b.slug]
+                    );
+                  }}
+                  style={{
+                    borderRadius: 20,
+                    padding: "6px 12px",
+                    background: gewaehlt ? "var(--akzent)" : undefined,
+                    color: gewaehlt ? "#000" : undefined,
+                  }}
+                >
+                  {b.emoji} {b.label} {gewaehlt ? "✓" : ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {daten.vorschlaege &&
+        (daten.vorschlaege.themen.length > 0 || daten.vorschlaege.queries.length > 0) && (
+        <div className="karte" style={{ padding: 16, marginTop: 12 }}>
+          <div className="abschnitt-titel">💡 Vorschläge deines Radars</div>
+          <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
+            Aus deinem Feedback gelernt — erst nach deiner Bestätigung fließen sie
+            in die Suche ein (kostet sonst nichts).
+          </p>
+          {daten.vorschlaege.themen.map((t) => (
+            <div key={t.slug} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0" }}>
+              <span>
+                Neues Thema: <b>{t.name}</b>{" "}
+                <span style={{ color: "var(--text-dim)", fontSize: 13 }}>
+                  ({t.keywords.slice(0, 4).join(", ")})
+                </span>
+              </span>
+              <button className="btn" style={{ marginLeft: "auto" }}
+                      onClick={() => vorschlagAktion("thema", t.slug, "uebernehmen")}>✓ Übernehmen</button>
+              <button className="btn" onClick={() => vorschlagAktion("thema", t.slug, "verwerfen")}>✕</button>
+            </div>
+          ))}
+          {daten.vorschlaege.queries.map((q) => (
+            <div key={q.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0" }}>
+              <span>
+                Neue Suche: <span style={{ color: "var(--text-dim)" }}>[{q.plattform}]</span> „{q.query}“
+              </span>
+              <button className="btn" style={{ marginLeft: "auto" }}
+                      onClick={() => vorschlagAktion("query", q.id, "uebernehmen")}>✓ Übernehmen</button>
+              <button className="btn" onClick={() => vorschlagAktion("query", q.id, "verwerfen")}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="karte" style={{ padding: 16, marginTop: 12 }}>
         <div className="abschnitt-titel">Themen ({daten.themen.length})</div>
