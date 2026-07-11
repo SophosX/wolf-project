@@ -69,6 +69,8 @@ export default async function LoginSeite(props: {
         {mitSupabase && (
           <p style={{ marginTop: 10 }}>
             Noch kein Konto? <a href="/signup">Jetzt registrieren</a>
+            <br />
+            <a href="/start" style={{ fontSize: 13 }}>Was ist Dein Radar? →</a>
           </p>
         )}
       </form>

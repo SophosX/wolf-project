@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     console.error("[api/logout]", e);
   }
   const login = req.nextUrl.clone();
-  login.pathname = "/login";
+  login.pathname = "/start";
   login.search = "";
   const res = NextResponse.redirect(login, 303);
   res.cookies.delete("radar_zugang");

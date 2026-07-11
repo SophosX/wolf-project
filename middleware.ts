@@ -32,7 +32,7 @@ function authModus(): AuthModus {
 }
 
 // Ohne Session/Code frei erreichbare Pfade (Login, Signup + deren APIs)
-const FREIE_PFADE = new Set(["/login", "/api/login", "/signup", "/api/signup"]);
+const FREIE_PFADE = new Set(["/start", "/login", "/api/login", "/signup", "/api/signup"]);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -113,10 +113,11 @@ export async function middleware(req: NextRequest) {
       { status: 401 }
     );
   }
-  const login = req.nextUrl.clone();
-  login.pathname = "/login";
-  login.search = "";
-  return NextResponse.redirect(login);
+  // Nicht angemeldete Besucher landen auf der Landing (erklaert die Plattform)
+  const start = req.nextUrl.clone();
+  start.pathname = "/start";
+  start.search = "";
+  return NextResponse.redirect(start);
 }
 
 export const config = {
