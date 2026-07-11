@@ -88,7 +88,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     """Kuration fuer EINEN Nutzer. Rueckgabe: Protokoll-Dict (agent_run-Form)."""
     uid = nutzer["id"]
     plan = nutzer.get("plan") or "free"
-    limits = plan_limits.limits(plan)
+    limits = plan_limits.limits(plan, nutzer.get("limits"))
     themen = nutzer.get("themen") or {}
     gelernt = nutzer.get("gelernt") or {}
     profil = nutzer.get("profil") or {}

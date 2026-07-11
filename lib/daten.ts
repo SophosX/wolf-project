@@ -387,12 +387,18 @@ export async function supabaseAdmin() {
 /** profiles-Zeile eines Nutzers (Supabase); null im Lokal-Modus/unbekannt. */
 export async function holeProfil(
   userId: string
-): Promise<{ onboarding_status: string; plan: string; rolle: string; anzeige_name: string | null } | null> {
+): Promise<{
+  onboarding_status: string;
+  plan: string;
+  rolle: string;
+  anzeige_name: string | null;
+  limits: Record<string, unknown> | null;
+} | null> {
   if (datenModus() !== "supabase") return null;
   const sb = await supabase();
   const { data, error } = await sb
     .from("profiles")
-    .select("onboarding_status, plan, rolle, anzeige_name")
+    .select("onboarding_status, plan, rolle, anzeige_name, limits")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error("Supabase-Fehler (profiles): " + error.message);

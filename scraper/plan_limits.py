@@ -12,6 +12,7 @@ PLAN_LIMITS = {
         "watchlist": 5,            # max. Personen auf der Beobachtungsliste
         "kuration_pro_tag": 1,     # Kurationslaeufe pro Tag
         "kuration_max_neu": 10,    # max. NEUE Inbox-Zuordnungen pro Lauf
+        "queries_pro_lauf": 12,    # wie viele aktive Queries je Akquise-Lauf (Rotation)
         "skripte_pro_woche": 3,
         "rezepte": False,
         "webcheck": False,
@@ -23,6 +24,7 @@ PLAN_LIMITS = {
         "watchlist": 25,
         "kuration_pro_tag": 6,     # alle 4 h
         "kuration_max_neu": 25,
+        "queries_pro_lauf": 40,    # Apify-Kosten-Deckel auch fuer Pro
         "skripte_pro_woche": None,  # None = unbegrenzt
         "rezepte": True,
         "webcheck": True,
@@ -30,6 +32,18 @@ PLAN_LIMITS = {
 }
 
 
-def limits(plan: str | None) -> dict:
-    """Limits fuer einen Plan; unbekannt/None faellt auf free zurueck."""
-    return PLAN_LIMITS.get(plan or "free", PLAN_LIMITS["free"])
+def limits(plan: str | None, overrides: dict | None = None) -> dict:
+    """Effektive Limits: Plan-Defaults + Admin-Overrides (profiles.limits).
+    Unbekannter Plan faellt auf free zurueck; nur bekannte Keys werden gemerged."""
+    basis = dict(PLAN_LIMITS.get(plan or "free", PLAN_LIMITS["free"]))
+    for k, v in (overrides or {}).items():
+        if k not in basis or v is None:
+            continue
+        if isinstance(basis[k], bool):
+            basis[k] = bool(v)
+        elif basis[k] is None or isinstance(basis[k], int):
+            try:
+                basis[k] = int(v)
+            except (TypeError, ValueError):
+                pass
+    return basis

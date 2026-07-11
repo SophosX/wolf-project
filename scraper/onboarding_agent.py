@@ -41,6 +41,19 @@ MAX_TRANSKRIPT_ZEICHEN = 5000
 MAX_CHUNKS_PRO_VIDEO = 3
 
 
+def _fortschritt(user_id, text):
+    """Live-Fortschritt fuer den Wizard: payload des laufenden Onboarding-
+    Auftrags aktualisieren (die App pollt /api/onboarding)."""
+    try:
+        speicher._supabase_patch("auftraege", {
+            "user_id": "eq." + str(user_id), "typ": "eq.onboarding",
+            "status": "eq.laeuft",
+        }, {"payload": {"schritt": text, "zeit": speicher.jetzt_iso()}})
+    except Exception:
+        pass
+    print("[onboarding] %s" % text)
+
+
 # ---------------------------------------------------------------------------
 # Schritt 1: Kanal-Videos einsammeln
 # ---------------------------------------------------------------------------
@@ -223,8 +236,10 @@ def _slugify(text):
     return s.strip("_")[:40] or "thema"
 
 
-def map_reduce(kandidaten, fehler):
-    """Gemini-Map ueber Transkript-Batches, dann Reduce zum Profil."""
+def map_reduce(kandidaten, fehler, fokus_text="", user_id=None):
+    """Gemini-Map ueber Transkript-Batches, dann Reduce zum Profil.
+    fokus_text: Freitext-Wunsch des Nutzers aus dem Wizard ("Worauf willst du
+    reagieren?") — fliesst als Leitplanke in den Reduce-Prompt ein."""
     mit_material = [k for k in kandidaten if (k.get("transkript") or k.get("caption"))]
     teil_analysen = []
     for i in range(0, len(mit_material), MAP_BATCH):
@@ -239,17 +254,28 @@ def map_reduce(kandidaten, fehler):
             daten = analyse.gemini_json("\n\n".join(bloecke), system=_SYSTEM_MAP,
                                         schema=_SCHEMA_MAP, temperatur=0.2)
             teil_analysen.append(daten)
-            print("[onboarding] Map %d/%d ok" % (i // MAP_BATCH + 1,
-                                                 (len(mit_material) + MAP_BATCH - 1) // MAP_BATCH))
+            if user_id:
+                _fortschritt(user_id, "Deine Inhalte werden analysiert (%d/%d) …"
+                             % (i // MAP_BATCH + 1,
+                                (len(mit_material) + MAP_BATCH - 1) // MAP_BATCH))
         except Exception as e:
             fehler.append("map batch %d: %s" % (i // MAP_BATCH + 1, e))
         time.sleep(analyse.PAUSE_ZWISCHEN_CALLS_S)
     if not teil_analysen:
         return None
 
+    if user_id:
+        _fortschritt(user_id, "Fast fertig — dein Profil wird destilliert "
+                     "(Positionen, Ton, Trigger, Suchplan) …")
+    prompt_teile = ["TEIL-ANALYSEN:\n"
+                    + json.dumps(teil_analysen, ensure_ascii=False)[:60000]]
+    if fokus_text:
+        prompt_teile.append("FOKUS-WUNSCH DES CREATORS (Leitplanke fuer Themen/"
+                            "Queries/Trigger — hoeher gewichten, was dazu passt):\n"
+                            + fokus_text[:600])
     try:
         profil = analyse.gemini_json(
-            "TEIL-ANALYSEN:\n" + json.dumps(teil_analysen, ensure_ascii=False)[:60000],
+            "\n\n".join(prompt_teile),
             system=_SYSTEM_REDUCE, schema=_SCHEMA_REDUCE, temperatur=0.2,
             modell=analyse.GEMINI_MODELL_QUALITAET)
     except Exception as e:
@@ -329,6 +355,7 @@ def main():
                              {"onboarding_status": "import_laeuft"})
     print("[onboarding] %s (%s): Import von %d Kanal/Kanaelen, Limit %d Videos"
           % (uid, plan, len(kanaele), limit))
+    _fortschritt(uid, "Deine Kanaele werden gelesen — wir sammeln deine Videos ein …")
 
     # --- 1) Videos einsammeln ------------------------------------------------
     kandidaten = []
@@ -344,7 +371,8 @@ def main():
             kandidaten += tiktok_kanal_videos(handle, rest, fehler)
         else:
             fehler.append("onboarding: Plattform %s (noch) nicht unterstuetzt" % plattform)
-    print("[onboarding] %d Videos eingesammelt" % len(kandidaten))
+    _fortschritt(uid, "%d Videos gefunden — jetzt holen wir die Transkripte …"
+                 % len(kandidaten))
 
     # --- 2) Transkripte -------------------------------------------------------
     yt = [k for k in kandidaten if k.get("plattform") == "youtube"]
@@ -362,10 +390,12 @@ def main():
     except Exception as e:
         fehler.append("transkription: %s" % e)
     mit_transkript = sum(1 for k in kandidaten if k.get("transkript"))
-    print("[onboarding] %d/%d Transkripte" % (mit_transkript, len(kandidaten)))
+    _fortschritt(uid, "%d von %d Transkripten liegen vor — die KI liest jetzt, "
+                 "wie du sprichst und wofuer du stehst …" % (mit_transkript, len(kandidaten)))
 
     # --- 3) Map-Reduce ---------------------------------------------------------
-    ergebnis = map_reduce(kandidaten, fehler)
+    fokus_text = ((profil.get("interessen_profil") or {}).get("fokus_text") or "").strip()
+    ergebnis = map_reduce(kandidaten, fehler, fokus_text=fokus_text, user_id=uid)
     if not ergebnis:
         print("[onboarding] Map-Reduce lieferte nichts — Status zurueck auf offen.")
         speicher._supabase_patch("profiles", {"id": "eq." + uid},
@@ -427,6 +457,8 @@ def main():
                                 prefer="return=minimal,resolution=ignore-duplicates")
 
     # --- 4) narrativ_chunks ----------------------------------------------------
+    _fortschritt(uid, "Dein Sprach-Gedaechtnis wird aufgebaut (damit Skripte "
+                 "spaeter nach DIR klingen) …")
     n_chunks = baue_narrativ_chunks(uid, kandidaten, fehler)
 
     # --- 5) Review-Status -------------------------------------------------------

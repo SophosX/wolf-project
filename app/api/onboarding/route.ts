@@ -38,9 +38,20 @@ export async function GET() {
       .from("watchlist_personen")
       .select("id, name, plattform, handle, folgt")
       .eq("user_id", nutzer.userId);
+    const { data: auftraege } = await sb
+      .from("auftraege")
+      .select("status, payload, erstellt_am")
+      .eq("user_id", nutzer.userId)
+      .eq("typ", "onboarding")
+      .order("erstellt_am", { ascending: false })
+      .limit(1);
+    const importAuftrag = (auftraege || [])[0] || null;
 
     return NextResponse.json({
       status: profil?.onboarding_status || "offen",
+      fortschritt:
+        (importAuftrag?.payload as { schritt?: string } | null)?.schritt || null,
+      import_status: importAuftrag?.status || null,
       profil: radarProfil
         ? {
             nische: radarProfil.nische,
@@ -82,10 +93,13 @@ export async function POST(req: NextRequest) {
     }
 
     const sb = await supabaseAdmin();
+    const fokus = String(body.fokus || "").trim().slice(0, 600);
     const { error: profilFehler } = await sb.from("radar_profile").upsert({
       user_id: nutzer.userId,
       quelle_kanaele: kanaele,
       marke: String(body.marke || "").slice(0, 60) || null,
+      // Fokus-Wunsch aus dem Wizard: Leitplanke fuer den Import-Agenten
+      interessen_profil: fokus ? { fokus_text: fokus } : {},
       aktualisiert_am: new Date().toISOString(),
     });
     if (profilFehler) throw new Error(profilFehler.message);

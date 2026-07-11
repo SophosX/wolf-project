@@ -25,7 +25,7 @@ function wochenSchluessel(): string {
 async function skriptBudgetPruefen(userId: string): Promise<string | null> {
   if (datenModus() !== "supabase") return null; // Lokal-Betrieb: kein Gate
   const profil = await holeProfil(userId).catch(() => null);
-  const limit = planLimits(profil?.plan).skripteProWoche;
+  const limit = planLimits(profil?.plan, profil?.limits).skripteProWoche;
   if (!isFinite(limit)) return null;
   const woche = wochenSchluessel();
   const zaehler = (await holeEinstellungsWert<{ woche: string; anzahl: number }>(

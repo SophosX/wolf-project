@@ -1,7 +1,7 @@
 // Kopfleiste (Server-Komponente): Logo + Tabs mit Live-Zählern
 
 import { aktuellerNutzer } from "@/lib/auth";
-import { datenModus, holeRadarProfil, zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
+import { datenModus, holeProfil, holeRadarProfil, zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
 import NavTabs from "./NavTabs";
 
 export default async function Kopfleiste() {
@@ -19,15 +19,21 @@ export default async function Kopfleiste() {
   // (Lokal-/Christian-Betrieb) bzw. "Dein Radar" (Supabase ohne Marke).
   let marke: string | null = null;
   let logo = "🐺";
+  let istAdmin = false;
   if (datenModus() === "supabase") {
     try {
-      const profil = await holeRadarProfil(nutzer.userId);
+      const [profil, konto] = await Promise.all([
+        holeRadarProfil(nutzer.userId),
+        holeProfil(nutzer.userId),
+      ]);
       marke = ((profil?.marke as string) || "").trim() || null;
       if (marke && marke.toLowerCase() !== "wolf") logo = "📡";
       if (!marke) {
         marke = "Dein";
         logo = "📡";
       }
+      // Admin-Tab nur bei echter Anmeldung (nicht im offenen Code-Betrieb)
+      istAdmin = nutzer.quelle === "supabase" && konto?.rolle === "admin";
     } catch (e) {
       console.error("[Kopfleiste] Profil nicht ladbar:", e);
     }
@@ -56,6 +62,7 @@ export default async function Kopfleiste() {
     ...(datenModus() === "supabase"
       ? [{ pfad: "/einstellungen", label: "Profil", zahl: null }]
       : []),
+    ...(istAdmin ? [{ pfad: "/admin", label: "Admin", zahl: null }] : []),
   ];
 
   return (

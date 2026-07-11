@@ -2,7 +2,7 @@
 // Filter lesen → Videos laden → Watchlist-Flag anreichern → Liste rendern
 
 import { aktuellerNutzer } from "@/lib/auth";
-import { holeVideos } from "@/lib/daten";
+import { datenModus, holeVideos } from "@/lib/daten";
 import { istAufWatchlist } from "@/lib/watchlist";
 import type { Plattform, Status } from "@/lib/typen";
 import type { Seite, VideoAnzeige } from "./VideoKarte";
@@ -66,6 +66,23 @@ export default async function ListenSeite({
       />
       {seite === "inbox" && <SuchStatusLeiste />}
       {ladefehler && <div className="hinweis-fehler">⚠ {ladefehler}</div>}
+      {seite === "inbox" && videos.length === 0 && !ladefehler && datenModus() === "supabase" && (
+        <div className="karte" style={{ padding: 16, marginBottom: 12 }}>
+          <div className="abschnitt-titel">Dein Radar arbeitet für dich 🚀</div>
+          <p>
+            Eine leere Inbox heißt nicht, dass nichts passiert: Dein Radar
+            durchsucht <b>automatisch alle paar Stunden</b> YouTube, TikTok und
+            Instagram mit deinen Suchanfragen und prüft jeden Kandidaten gegen
+            deine Positionen — nur echte Treffer landen hier. Die erste gut
+            gefüllte Inbox wächst über die ersten 24–48 Stunden.
+          </p>
+          <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
+            Tipp: Unter <a href="/agenten">Agenten</a> kannst du „Jetzt suchen“
+            drücken, unter <a href="/einstellungen">Profil</a> deine Suchanfragen
+            schärfen — und jedes Annehmen/Ablehnen macht dein Radar treffsicherer.
+          </p>
+        </div>
+      )}
       <VideoListe videos={videos} seite={seite} leerText={leerText} />
     </>
   );

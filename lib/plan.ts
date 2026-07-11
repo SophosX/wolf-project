@@ -17,6 +17,8 @@ export interface PlanLimits {
   kurationProTag: number;
   /** max. NEUE Inbox-Zuordnungen pro Kurationslauf */
   kurationMaxNeu: number;
+  /** wie viele aktive Suchqueries je Akquise-Lauf mitlaufen (Rotation) */
+  queries_pro_lauf: number;
   /** Skript-Generierungen pro Woche (Infinity = unbegrenzt) */
   skripteProWoche: number;
   /** Rezepte-Radar verfügbar? */
@@ -33,6 +35,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     watchlist: 5,
     kurationProTag: 1,
     kurationMaxNeu: 10,
+    queries_pro_lauf: 12,
     skripteProWoche: 3,
     rezepte: false,
     webcheck: false,
@@ -44,12 +47,27 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     watchlist: 25,
     kurationProTag: 6,
     kurationMaxNeu: 25,
+    queries_pro_lauf: 40,
     skripteProWoche: Infinity,
     rezepte: true,
     webcheck: true,
   },
 };
 
-export function planLimits(plan: string | null | undefined): PlanLimits {
-  return PLAN_LIMITS[(plan as Plan) || "free"] || PLAN_LIMITS.free;
+export function planLimits(
+  plan: string | null | undefined,
+  overrides?: Record<string, unknown> | null
+): PlanLimits {
+  const basis = { ...(PLAN_LIMITS[(plan as Plan) || "free"] || PLAN_LIMITS.free) };
+  for (const [k, v] of Object.entries(overrides || {})) {
+    if (!(k in basis) || v === null || v === undefined) continue;
+    const alt = basis[k as keyof PlanLimits];
+    if (typeof alt === "boolean") {
+      (basis as Record<string, unknown>)[k] = Boolean(v);
+    } else {
+      const n = Number(v);
+      if (!isNaN(n)) (basis as Record<string, unknown>)[k] = n;
+    }
+  }
+  return basis;
 }

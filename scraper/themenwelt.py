@@ -77,14 +77,50 @@ def lade_scrape_plan():
     if speicher.daten_modus() != "supabase":
         return _lokaler_scrape_plan()
 
+    import datetime
+    import plan_limits
+
     plan = {"youtube": [], "tiktok": [], "instagram_hashtags": [], "watchlist": []}
-    zeilen = speicher._supabase_get("scrape_queries_aktiv", {"select": "*"}) or []
+
+    # Per-User-Query-Cap mit Tages-Rotation: jeder Nutzer traegt maximal
+    # limits['queries_pro_lauf'] Queries zum Lauf bei (Admin-Override moeglich).
+    # Rotation ueber den Tag im Jahr, damit ueber die Zeit ALLE Queries drankommen.
+    profile = speicher._supabase_get("profiles", {
+        "select": "id,plan,limits",
+        "onboarding_status": "eq.fertig",
+        "geloescht_am": "is.null",
+    }) or []
+    limits_je_user = {p_["id"]: plan_limits.limits(p_.get("plan"), p_.get("limits"))
+                      for p_ in profile}
+    zeilen = speicher._supabase_get("suchqueries", {
+        "select": "user_id,plattform,query",
+        "aktiv": "is.true", "order": "id.asc",
+    }) or []
+    je_user = {}
     for z in zeilen:
-        p = z.get("plattform")
-        if p == "instagram":
-            plan["instagram_hashtags"].append(z.get("query", "").lstrip("#"))
-        elif p in plan:
-            plan[p].append(z.get("query", ""))
+        uid = z.get("user_id")
+        if uid not in limits_je_user:
+            continue  # Nutzer nicht fertig/geloescht
+        je_user.setdefault(uid, []).append(z)
+    tag = datetime.datetime.now(datetime.timezone.utc).timetuple().tm_yday
+    gesehen = set()
+    for uid, qs in je_user.items():
+        cap = int(limits_je_user[uid].get("queries_pro_lauf") or 12)
+        if len(qs) > cap:
+            start = (tag * cap) % len(qs)
+            qs = (qs + qs)[start:start + cap]
+            logger.info("Query-Rotation %s: %d von %d Queries in diesem Lauf.",
+                        uid, cap, len(je_user[uid]))
+        for z in qs:
+            p = z.get("plattform")
+            norm = (p, z.get("query", "").strip().lower())
+            if not norm[1] or norm in gesehen:
+                continue
+            gesehen.add(norm)
+            if p == "instagram":
+                plan["instagram_hashtags"].append(z.get("query", "").lstrip("#"))
+            elif p in plan:
+                plan[p].append(z.get("query", ""))
 
     for p in ("youtube", "tiktok"):
         plan[p] = _cooldown_filter(p, [q for q in plan[p] if q])

@@ -87,6 +87,23 @@ create policy "profiles_eigene_aendern" on profiles
 -- profiles um Plan-/Lösch-Verwaltung erweitern (idempotent).
 alter table profiles add column if not exists plan_bis timestamptz;
 alter table profiles add column if not exists geloescht_am timestamptz;
+-- Per-User-Limit-Overrides (Admin-gesetzt) ÜBER den Plan-Defaults, z.B.
+-- {"kuration_max_neu": 10, "queries_pro_lauf": 30, "skripte_pro_woche": 2}.
+alter table profiles add column if not exists limits jsonb not null default '{}'::jsonb;
+
+-- Einladungs-Codes (Admin-Dashboard verwaltet sie; ersetzt langfristig
+-- die ENV RADAR_INVITE_CODES — beide Wege gelten).
+create table if not exists invites (
+  code text primary key,
+  erstellt_von uuid references profiles(id) on delete set null,
+  erstellt_am timestamptz not null default now(),
+  notiz text,                                -- z.B. fuer wen die Einladung ist
+  max_nutzungen int not null default 1,
+  nutzungen int not null default 0,
+  zuletzt_benutzt_von uuid,
+  zuletzt_benutzt_am timestamptz
+);
+alter table invites enable row level security;
 
 -- === Video-Pool (mandantenneutral) ========================================
 create table if not exists videos (

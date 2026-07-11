@@ -3,7 +3,57 @@
 // Invite-Code passen. Öffnung für alle = ENV einfach entfernen (Phase 6).
 
 import { NextRequest, NextResponse } from "next/server";
+import { datenModus, supabaseAdmin } from "@/lib/daten";
 import { supabaseAuthAktiv, supabaseRouteClient } from "@/lib/supabaseRoute";
+
+/** Invite prüfen: ENV-Codes ODER DB-Tabelle invites (Admin-Dashboard).
+ *  Rückgabe: "env" | "db" | null (ungültig). */
+async function invitePruefen(invite: string): Promise<"env" | "db" | null> {
+  const envCodes = (process.env.RADAR_INVITE_CODES || "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const inviteNoetig = envCodes.length > 0 || datenModus() === "supabase";
+  if (!inviteNoetig) return "env";
+  if (envCodes.includes(invite)) return "env";
+  if (datenModus() === "supabase" && invite) {
+    try {
+      const sb = await supabaseAdmin();
+      const { data } = await sb
+        .from("invites")
+        .select("code, max_nutzungen, nutzungen")
+        .eq("code", invite)
+        .maybeSingle();
+      if (data && data.nutzungen < data.max_nutzungen) return "db";
+    } catch (e) {
+      console.error("[api/signup] Invite-Prüfung fehlgeschlagen:", e);
+    }
+  }
+  return null;
+}
+
+/** Nach erfolgreichem Signup: DB-Invite-Nutzung hochzählen (best effort). */
+async function inviteVerbrauchen(invite: string, userId: string | null) {
+  try {
+    const sb = await supabaseAdmin();
+    const { data } = await sb
+      .from("invites")
+      .select("nutzungen")
+      .eq("code", invite)
+      .maybeSingle();
+    if (!data) return;
+    await sb
+      .from("invites")
+      .update({
+        nutzungen: (data.nutzungen || 0) + 1,
+        zuletzt_benutzt_von: userId,
+        zuletzt_benutzt_am: new Date().toISOString(),
+      })
+      .eq("code", invite);
+  } catch (e) {
+    console.error("[api/signup] Invite-Zähler fehlgeschlagen:", e);
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +76,8 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const inviteCodes = (process.env.RADAR_INVITE_CODES || "")
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-    if (inviteCodes.length > 0 && !inviteCodes.includes(invite)) {
+    const inviteArt = await invitePruefen(invite);
+    if (!inviteArt) {
       return NextResponse.json(
         { fehler: "Ungültiger Einladungs-Code — die Registrierung ist aktuell invite-only." },
         { status: 403 }
@@ -48,6 +95,9 @@ export async function POST(req: NextRequest) {
     });
     if (error) {
       return NextResponse.json({ fehler: error.message }, { status: 400 });
+    }
+    if (inviteArt === "db") {
+      await inviteVerbrauchen(invite, data.user?.id || null);
     }
     // Ohne E-Mail-Bestätigung existiert sofort eine Session (Cookies gesetzt);
     // mit Bestätigung muss der Nutzer erst den Link klicken.

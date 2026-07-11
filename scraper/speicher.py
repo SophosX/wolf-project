@@ -594,7 +594,7 @@ def lade_nutzer_aktiv():
     if daten_modus() != "supabase":
         return []
     profile = _supabase_get("profiles", {
-        "select": "id,plan,onboarding_status,geloescht_am",
+        "select": "id,plan,limits,onboarding_status,geloescht_am",
         "onboarding_status": "eq.fertig",
         "geloescht_am": "is.null",
     }) or []
@@ -603,6 +603,7 @@ def lade_nutzer_aktiv():
         nutzer.append({
             "id": p["id"],
             "plan": p.get("plan") or "free",
+            "limits": p.get("limits") or {},
             "profil": lade_profil(p["id"]),
             "themen": lade_themen(p["id"]),
         })

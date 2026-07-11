@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const nutzer = await aktuellerNutzer();
     if (datenModus() === "supabase") {
       const profil = await holeProfil(nutzer.userId).catch(() => null);
-      if (!planLimits(profil?.plan).webcheck) {
+      if (!planLimits(profil?.plan, profil?.limits).webcheck) {
         return NextResponse.json(
           { fehler: "Der manuelle Websuche-Faktencheck ist ein Pro-Feature." },
           { status: 403 }
