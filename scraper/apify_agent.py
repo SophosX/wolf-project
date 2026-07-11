@@ -79,8 +79,47 @@ def verfuegbar():
     return token() is not None
 
 
+# ---------------------------------------------------------------------------
+# Apify-Tagesbudget (Kosten-Notbremse): max. Actor-Calls pro UTC-Tag.
+# Zaehler lebt im daten/-Volume und ueberlebt Container-Restarts.
+# 0/leer = Guard aus. Bei Ueberschreitung wirft _run_sync — die Agenten
+# sammeln das als Fehler ein, der Lauf bricht kontrolliert ab.
+# ---------------------------------------------------------------------------
+
+_BUDGET_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "..", "daten", ".apify_budget.json")
+MAX_CALLS_TAG = int(os.environ.get("RADAR_APIFY_MAX_CALLS_TAG", "150") or "0")
+
+
+def _budget_verbrauchen():
+    if MAX_CALLS_TAG <= 0:
+        return
+    heute = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    daten = {}
+    try:
+        with open(_BUDGET_DATEI, encoding="utf-8") as f:
+            daten = json.load(f)
+    except (OSError, ValueError):
+        pass
+    if daten.get("datum") != heute:
+        daten = {"datum": heute, "calls": 0}
+    daten["calls"] = int(daten.get("calls", 0)) + 1
+    try:
+        os.makedirs(os.path.dirname(_BUDGET_DATEI), exist_ok=True)
+        with open(_BUDGET_DATEI, "w", encoding="utf-8") as f:
+            json.dump(daten, f)
+    except OSError:
+        pass
+    if daten["calls"] > MAX_CALLS_TAG:
+        raise RuntimeError(
+            "Apify-Tagesbudget erreicht (%d/%d Actor-Calls heute) — "
+            "RADAR_APIFY_MAX_CALLS_TAG anheben oder morgen weiter."
+            % (daten["calls"], MAX_CALLS_TAG))
+
+
 def _run_sync(actor, eingabe, timeout=None):
     """Actor synchron ausführen, Dataset-Items zurückgeben."""
+    _budget_verbrauchen()
     t = int(timeout or TIMEOUT_S)
     url = (APIFY_BASIS + "/acts/" + actor + "/run-sync-get-dataset-items?token="
            + urllib.parse.quote(token()) + "&timeout=" + str(t))

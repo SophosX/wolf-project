@@ -54,6 +54,26 @@ export default function EinstellungenSeite() {
     lade();
   }, [lade]);
 
+  async function kontoLoeschen() {
+    const sicher = window.prompt(
+      'Das löscht dein Konto und ALLE deine Daten unwiderruflich (DSGVO). Tippe LOESCHEN zum Bestätigen:'
+    );
+    if (sicher !== "LOESCHEN") return;
+    setLaeuft(true);
+    try {
+      const res = await fetch("/api/konto", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bestaetigung: "LOESCHEN" }),
+      });
+      const d = await res.json();
+      if (!res.ok) setFehler(d.fehler || "Löschung fehlgeschlagen.");
+      else window.location.href = "/login";
+    } finally {
+      setLaeuft(false);
+    }
+  }
+
   async function speichern() {
     setLaeuft(true);
     setFehler(null);
@@ -207,6 +227,23 @@ export default function EinstellungenSeite() {
       >
         {laeuft ? "Speichert …" : "Änderungen speichern"}
       </button>
+
+      <div className="karte" style={{ padding: 16, marginTop: 20 }}>
+        <div className="abschnitt-titel">Konto</div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+          <form method="post" action="/api/logout">
+            <button className="btn" type="submit">Abmelden</button>
+          </form>
+          <button className="btn" onClick={kontoLoeschen} disabled={laeuft}
+                  style={{ color: "var(--rot, #e5484d)" }}>
+            Konto & alle Daten löschen
+          </button>
+        </div>
+        <p style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 8 }}>
+          Die Löschung entfernt Profil, Themen, Suchen, Zuordnungen, Transkript-
+          Auszüge deiner Videos und alle Einstellungen unwiderruflich.
+        </p>
+      </div>
     </>
   );
 }
