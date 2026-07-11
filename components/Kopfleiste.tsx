@@ -52,6 +52,10 @@ export default async function Kopfleiste() {
     { pfad: "/personen", label: "Personen", zahl: null },
     { pfad: "/archiv", label: "Archiv", zahl: zaehler.abgelehnt + zaehler.archiv },
     { pfad: "/agenten", label: "Agenten", zahl: null },
+    // Profil-Pflege gibt es nur im Multi-Tenant-Betrieb
+    ...(datenModus() === "supabase"
+      ? [{ pfad: "/einstellungen", label: "Profil", zahl: null }]
+      : []),
   ];
 
   return (

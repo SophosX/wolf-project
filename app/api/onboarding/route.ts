@@ -150,6 +150,36 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    // Suchqueries pflegen (auch von /einstellungen genutzt):
+    // {queries_neu: [{plattform, query}], queries_loeschen: [id], queries_aktiv: {id: bool}}
+    if (Array.isArray(body.queries_neu)) {
+      for (const q of body.queries_neu.slice(0, 10)) {
+        const query = String(q?.query || "").trim();
+        if (query.length < 3) continue;
+        await sb.from("suchqueries").upsert(
+          {
+            user_id: nutzer.userId,
+            plattform: ["youtube", "tiktok", "instagram"].includes(String(q?.plattform))
+              ? String(q.plattform)
+              : "youtube",
+            query,
+            aktiv: true,
+            quelle: "manuell",
+          },
+          { onConflict: "user_id,plattform,query", ignoreDuplicates: true }
+        );
+      }
+    }
+    if (Array.isArray(body.queries_loeschen)) {
+      for (const id of body.queries_loeschen.slice(0, 50)) {
+        await sb
+          .from("suchqueries")
+          .delete()
+          .eq("user_id", nutzer.userId)
+          .eq("id", Number(id));
+      }
+    }
+
     if (body.fertig) {
       await sb
         .from("profiles")
