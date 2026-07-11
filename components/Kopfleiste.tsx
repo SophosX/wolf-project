@@ -1,7 +1,7 @@
 // Kopfleiste (Server-Komponente): Logo + Tabs mit Live-Zählern
 
 import { aktuellerNutzer } from "@/lib/auth";
-import { zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
+import { datenModus, holeRadarProfil, zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
 import NavTabs from "./NavTabs";
 
 export default async function Kopfleiste() {
@@ -15,6 +15,23 @@ export default async function Kopfleiste() {
   };
   let rezepte = 0;
   const nutzer = await aktuellerNutzer();
+  // Branding: "«marke» Radar" aus dem Nutzer-Profil; Fallback "Wolf Radar"
+  // (Lokal-/Christian-Betrieb) bzw. "Dein Radar" (Supabase ohne Marke).
+  let marke: string | null = null;
+  let logo = "🐺";
+  if (datenModus() === "supabase") {
+    try {
+      const profil = await holeRadarProfil(nutzer.userId);
+      marke = ((profil?.marke as string) || "").trim() || null;
+      if (marke && marke.toLowerCase() !== "wolf") logo = "📡";
+      if (!marke) {
+        marke = "Dein";
+        logo = "📡";
+      }
+    } catch (e) {
+      console.error("[Kopfleiste] Profil nicht ladbar:", e);
+    }
+  }
   try {
     zaehler = await zaehleStatus(nutzer.userId);
   } catch (e) {
@@ -42,7 +59,7 @@ export default async function Kopfleiste() {
       <div className="kopf-innen">
         <div className="kopf-zeile">
           <div className="logo">
-            🐺 Wolf <span className="gelb">Radar</span>
+            {logo} {marke || "Wolf"} <span className="gelb">Radar</span>
           </div>
         </div>
         <NavTabs tabs={tabs} />

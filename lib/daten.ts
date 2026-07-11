@@ -375,6 +375,15 @@ export async function fordereLaufAn(userId: string): Promise<void> {
   );
 }
 
+/** Service-Client für serverseitige Spezialfälle (Onboarding-Routen etc.).
+ *  NUR server-seitig verwenden — Service-Key! Wirft im Lokal-Modus. */
+export async function supabaseAdmin() {
+  if (datenModus() !== "supabase") {
+    throw new Error("supabaseAdmin nur im Supabase-Modus verfügbar");
+  }
+  return supabase();
+}
+
 /** profiles-Zeile eines Nutzers (Supabase); null im Lokal-Modus/unbekannt. */
 export async function holeProfil(
   userId: string
