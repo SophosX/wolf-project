@@ -4,7 +4,7 @@
 // Direkt über die REST-API (keine SDK-Abhängigkeit), Modell: gemini-2.5-flash
 
 import { ladeWissen } from "./wissen";
-import { chrisOTonBlock } from "./narrativ";
+import { oTonBlock } from "./narrativ";
 import type { Quelle, Skript, Video } from "./typen";
 
 // Zwei Qualitätsstufen (User-Vorgabe: Faktencheck & Skripte auf hochwertigem Modell):
@@ -132,7 +132,7 @@ async function feedbackKontext(userId: string, video: Video): Promise<string> {
   const eigene = (video.feedback || []).filter((f) => f.kommentar);
   if (eigene.length > 0) {
     teile.push(
-      "FEEDBACK VON CHRIS ZU DIESEM VIDEO (unbedingt berücksichtigen):\n" +
+      "FEEDBACK DES CREATORS ZU DIESEM VIDEO (unbedingt berücksichtigen):\n" +
         eigene.map((f) => "- [" + f.aktion + "] " + f.kommentar).join("\n")
     );
   }
@@ -141,7 +141,7 @@ async function feedbackKontext(userId: string, video: Video): Promise<string> {
     const { holeEinstellungen, holeVideos } = await import("./daten");
     const notizen = (await holeEinstellungen(userId)).gelernt.notizen.slice(0, 5);
     if (notizen.length > 0) {
-      teile.push("GELERNTES FEEDBACK VON CHRIS (beachten!):\n- " + notizen.join("\n- "));
+      teile.push("GELERNTES FEEDBACK DES CREATORS (beachten!):\n- " + notizen.join("\n- "));
     }
     const thema = video.claim?.thema;
     if (thema) {
@@ -154,7 +154,7 @@ async function feedbackKontext(userId: string, video: Video): Promise<string> {
         )
         .slice(-3);
       if (verwandt.length > 0) {
-        teile.push("FRÜHERE KOMMENTARE VON CHRIS ZU DIESEM THEMA:\n" + verwandt.join("\n"));
+        teile.push("FRÜHERE KOMMENTARE DES CREATORS ZU DIESEM THEMA:\n" + verwandt.join("\n"));
       }
     }
   } catch {
@@ -167,11 +167,14 @@ const SKRIPT_TRENNER = /===\s*VARIANTE\s*(\d)\s*\|\s*([a-z_]+)\s*===/gi;
 
 /** Generiert 3 Skript-Varianten (mit Grounding für echte Quellen). */
 export async function generiereSkripte(userId: string, video: Video): Promise<Skript[]> {
-  const wissen = ladeWissen();
-  // Narrativ-RAG: Chris' echte Formulierungen zum Thema in den Prompt
-  const oTon = await chrisOTonBlock(video.claim?.aussage || video.titel, 3).catch(() => "");
+  const wissen = await ladeWissen(userId);
+  // Narrativ-RAG: die echten Formulierungen des Creators zum Thema in den Prompt
+  const oTon = await oTonBlock(userId, video.claim?.aussage || video.titel, 3).catch(() => "");
+  const creator =
+    wissen.creatorBeschreibung ||
+    "Christian Wolf (deutscher Fitness-Creator, 'Wolf Radar')";
   const prompt = [
-    "Du bist der Skript-Autor von Christian Wolf (deutscher Fitness-Creator, 'Wolf Radar').",
+    "Du bist der Skript-Autor von " + creator + ".",
     "Schreibe 3 Reaktions-Skript-Varianten (je 45-90 Sekunden Sprechzeit, Deutsch) auf das unten beschriebene Video mit einer klaren Ernährungs-Falschaussage.",
     "",
     "HALTE DICH STRIKT AN DIESEN STILGUIDE:",
@@ -376,7 +379,7 @@ async function pruefeBehauptung(behauptung: string, kontext: string): Promise<Be
     "Antworte auf Deutsch EXAKT in diesem Format (Labels genau so, keine Extra-Abschnitte):",
     "URTEIL: klar_falsch | stark_irrefuehrend | nuanciert | korrekt",
     "KONFIDENZ: <Zahl 0-100>",
-    "KORREKTUR: <1-3 Sätze, die Chris wörtlich in einem Richtigstellungs-Video sagen könnte;",
+    "KORREKTUR: <1-3 Sätze, die der Creator wörtlich in einem Richtigstellungs-Video sagen könnte;",
     "bei 'korrekt' stattdessen, was daran stimmt>",
     "BEGRUENDUNG: <kompakt, mit konkreten Zahlen/Dosen/Endpunkten aus der Evidenz>",
     "RECHNUNG: <eine nachrechenbare Dreisatz-Zahl fürs Video, oder '-'>",
@@ -519,7 +522,7 @@ export function baueFaktencheckBericht(checks: BehauptungsCheck[]): {
   const rechnungen = checks.map((c) => c.rechnung).filter(Boolean);
   if (rechnungen.length > 0) {
     teile.push("");
-    teile.push("## Nachrechenbare Zahl für Chris");
+    teile.push("## Nachrechenbare Zahl fürs Video");
     for (const r of rechnungen.slice(0, 2)) teile.push("- " + r);
   }
 

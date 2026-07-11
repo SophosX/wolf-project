@@ -285,16 +285,19 @@ create table if not exists rezepte (
   kanal text,
   views bigint default 0,
   likes bigint default 0,
+  kommentare bigint default 0,
   veroeffentlicht timestamptz,
   thumbnail_url text,
+  dauer_s int,
   kategorie text,
-  zutaten_hinweis text,
+  zutaten_kurz jsonb default '[]'::jsonb,
   score int default 0,
   fit_score int default 0,
   haken text,                                -- ehem. chris_haken: "was DU kritisieren würdest"
   begruendung text,
   status text not null default 'vorschlag'
     check (status in ('vorschlag','gemerkt','verworfen')),
+  feedback jsonb default '[]'::jsonb,
   gefunden_am timestamptz default now()
 );
 create index if not exists rezepte_user_status on rezepte (user_id, status, score desc);
@@ -310,8 +313,9 @@ create table if not exists agent_runs (
   neu int default 0,
   analysiert int default 0,
   geflaggt int default 0,
-  fehler int default 0,
+  fehler jsonb default '[]'::jsonb,          -- Liste von Fehler-Strings (Kontrakt)
   dauer_s int default 0,
+  such_protokoll jsonb default '[]'::jsonb,  -- Pro-Query-Aufschlüsselung (UI-Transparenz)
   detail jsonb default '{}'::jsonb           -- z.B. Token-/Kosten-Zähler
 );
 create index if not exists agent_runs_zeit on agent_runs (zeit desc);

@@ -375,6 +375,50 @@ export async function fordereLaufAn(userId: string): Promise<void> {
   );
 }
 
+/** profiles-Zeile eines Nutzers (Supabase); null im Lokal-Modus/unbekannt. */
+export async function holeProfil(
+  userId: string
+): Promise<{ onboarding_status: string; plan: string; rolle: string; anzeige_name: string | null } | null> {
+  if (datenModus() !== "supabase") return null;
+  const sb = await supabase();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("onboarding_status, plan, rolle, anzeige_name")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw new Error("Supabase-Fehler (profiles): " + error.message);
+  return data;
+}
+
+/** radar_profile des Nutzers (Marke, Trigger-Liste, ...); null wenn nicht vorhanden. */
+export async function holeRadarProfil(userId: string): Promise<Record<string, unknown> | null> {
+  if (datenModus() !== "supabase") return null;
+  const sb = await supabase();
+  const { data, error } = await sb
+    .from("radar_profile")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error("Supabase-Fehler (radar_profile): " + error.message);
+  return data;
+}
+
+/** Aktive Themen des Nutzers (Supabase); [] im Lokal-Modus. */
+export async function holeThemen(
+  userId: string
+): Promise<{ slug: string; name: string; kerngewicht: number; keywords: string[]; aktiv: boolean }[]> {
+  if (datenModus() !== "supabase") return [];
+  const sb = await supabase();
+  const { data, error } = await sb
+    .from("themen")
+    .select("slug, name, kerngewicht, keywords, aktiv")
+    .eq("user_id", userId)
+    .eq("aktiv", true)
+    .order("kerngewicht", { ascending: false });
+  if (error) throw new Error("Supabase-Fehler (themen): " + error.message);
+  return data || [];
+}
+
 const LEERE_EINSTELLUNGEN: Einstellungen = {
   gelernt: { themen_boost: {}, notizen: [] },
   zuletzt_gelernt: null,

@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { aktuellerNutzer } from "@/lib/auth";
+import { creatorBeschreibung } from "@/lib/profiltext";
 import { rufeGeminiJson } from "@/lib/gemini";
 import {
   holeRezeptVorschlaege,
@@ -40,11 +41,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Gemini formt Suchanfragen; wenn das schiefgeht, suchen wir mit dem Text selbst
+    const nutzerFruh = await aktuellerNutzer();
+    const creator = await creatorBeschreibung(nutzerFruh.userId);
     let queries: string[] = [];
     try {
       const ableitung = await rufeGeminiJson<{ queries: string[] }>(
         [
-          "Christian Wolf (Fitness-Creator) sagt seinem Rezepte-Radar, welche Abnehm-Rezepte",
+          creator + " sagt seinem Rezepte-Radar, welche Rezepte",
           "er auf YouTube suchen soll. Leite 1-3 kurze deutsche YouTube-Suchanfragen ab,",
           "so wie echte Nutzer suchen (z. B. 'high protein frühstück rezept').",
           "",
@@ -68,8 +71,7 @@ export async function POST(req: NextRequest) {
       zeit: new Date().toISOString(),
       queries,
     };
-    const nutzer = await aktuellerNutzer();
-    await speichereRezeptVorschlag(nutzer.userId, vorschlag);
+    await speichereRezeptVorschlag(nutzerFruh.userId, vorschlag);
     return NextResponse.json({ ok: true, vorschlag });
   } catch (e) {
     console.error("[api/rezepte/vorschlag POST]", e);

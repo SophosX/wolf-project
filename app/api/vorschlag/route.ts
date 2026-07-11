@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { aktuellerNutzer } from "@/lib/auth";
+import { creatorBeschreibung, holeThemenSlugs } from "@/lib/profiltext";
 import { rufeGeminiJson } from "@/lib/gemini";
 import { setzeFolgen } from "@/lib/personen";
 import {
@@ -50,9 +51,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ fehler: "Bitte einen Vorschlag mit etwas Kontext schreiben." }, { status: 400 });
     }
 
+    const themenSlugs = await holeThemenSlugs(nutzer.userId, THEMEN_SLUGS);
+    const creator = await creatorBeschreibung(nutzer.userId);
     const ableitung = await rufeGeminiJson<VorschlagAbleitung>(
       [
-        "Christian Wolf (Fitness-Creator, stellt Ernährungs-Falschinfos richtig) gibt seinem",
+        creator + " gibt seinem",
         "Falschinfo-Radar einen Vorschlag. Leite daraus ab, wie der Suchalgorithmus angepasst wird.",
         "",
         "VORSCHLAG: »" + eingabe.slice(0, 600) + "«",
@@ -81,7 +84,7 @@ export async function POST(req: NextRequest) {
               required: ["name", "plattform", "handle"],
             },
           },
-          themen: { type: "ARRAY", items: { type: "STRING", enum: THEMEN_SLUGS } },
+          themen: { type: "ARRAY", items: { type: "STRING", enum: themenSlugs } },
           notiz: { type: "STRING" },
         },
         required: ["queries", "kanaele", "themen", "notiz"],
@@ -95,7 +98,7 @@ export async function POST(req: NextRequest) {
       ...k,
       plattform: ((k.plattform as string) === "unbekannt" ? "" : k.plattform) as VorschlagKanal["plattform"],
     }));
-    ableitung.themen = (ableitung.themen || []).filter((t) => THEMEN_SLUGS.includes(t)).slice(0, 3);
+    ableitung.themen = (ableitung.themen || []).filter((t) => themenSlugs.includes(t)).slice(0, 3);
 
     const vorschlag: Vorschlag = { text: eingabe, zeit: new Date().toISOString(), ableitung };
     await speichereVorschlag(nutzer.userId, vorschlag);

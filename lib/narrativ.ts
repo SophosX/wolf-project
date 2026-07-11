@@ -71,6 +71,60 @@ function cosinus(a: number[], b: number[]): number {
   return norm ? skalar / norm : 0;
 }
 
+/** Supabase-Modus: O-Töne aus narrativ_chunks DES NUTZERS via match_narrativ-RPC. */
+async function oTonAusSupabase(userId: string, text: string, k: number): Promise<string> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return "";
+  let anfrage: number[];
+  try {
+    anfrage = await embedQuery(text, 768);
+  } catch (e) {
+    console.warn("[narrativ] Query-Embedding fehlgeschlagen:", e);
+    return "";
+  }
+  if (!anfrage.length) return "";
+  const res = await fetch(url.replace(/\/$/, "") + "/rest/v1/rpc/match_narrativ", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: key,
+      Authorization: "Bearer " + key,
+    },
+    body: JSON.stringify({ p_user: userId, p_embedding: anfrage, p_k: k }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    console.warn("[narrativ] match_narrativ fehlgeschlagen:", res.status);
+    return "";
+  }
+  const chunks = (await res.json()) as { text?: string; titel?: string; ist_reaktion?: boolean }[];
+  if (!Array.isArray(chunks) || chunks.length === 0) return "";
+  const zeilen = ["SO SPRICHT DER CREATOR ÜBER DAS THEMA (O-Ton aus seinen Videos):"];
+  for (const c of chunks) {
+    if (!c.text) continue;
+    const marker = c.ist_reaktion ? " [aus einem seiner Richtigstellungs-Videos]" : "";
+    zeilen.push("- »" + c.text.slice(0, MAX_PASSAGE_ZEICHEN) + "« (Video: " + (c.titel || "?") + marker + ")");
+  }
+  if (zeilen.length === 1) return "";
+  zeilen.push("(Übernimm Haltung und typische Formulierungen, zitiere dich nicht wörtlich selbst.)");
+  return zeilen.join("\n");
+}
+
+/** Formatierter Prompt-Block mit O-Tönen des Creators — "" wenn nichts passt.
+ *  Supabase-Modus: per-User aus narrativ_chunks; Lokal: Christian-Datei-Index. */
+export async function oTonBlock(userId: string | null, text: string, k = 3): Promise<string> {
+  if (userId && (process.env.DATEN_MODUS || "").toLowerCase() === "supabase") {
+    try {
+      return await oTonAusSupabase(userId, text, k);
+    } catch (e) {
+      console.warn("[narrativ] Supabase-Retrieval fehlgeschlagen:", e);
+      return "";
+    }
+  }
+  return chrisOTonBlock(text, k);
+}
+
 /** Formatierter Prompt-Block mit Chris' O-Tönen zum Thema — "" wenn nichts passt. */
 export async function chrisOTonBlock(text: string, k = 3): Promise<string> {
   const index = ladeIndex();

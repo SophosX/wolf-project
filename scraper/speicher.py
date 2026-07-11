@@ -375,8 +375,9 @@ def speichere_agent_run(protokoll):
         ok = _supabase_post("agent_runs", [
             {k: protokoll.get(k) for k in
              ("zeit", "quelle", "gefunden", "neu", "analysiert", "geflaggt",
-              "fehler", "dauer_s", "user_id", "typ", "detail")
-             if protokoll.get(k) is not None or k not in ("user_id", "typ", "detail")}
+              "fehler", "dauer_s", "such_protokoll", "user_id", "typ", "detail")
+             if protokoll.get(k) is not None
+             or k not in ("user_id", "typ", "detail", "such_protokoll")}
         ])
         if not ok:
             print("[speicher] WARNUNG: agent_run konnte nicht nach Supabase geschrieben werden")
