@@ -166,8 +166,8 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     # --- Relevanz-Gate: Keyword-Treffer sind nur ein VORSCHLAG — bestehen
     # muss jeder Kandidat die semantische Naehe zwischen SEINEM Thema und der
     # Kernaussage des Videos. Fachfremde Kategorie => hoehere Huerde.
-    MIN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT", "0.35"))
-    FREMD_AEHNLICHKEIT = 0.5
+    MIN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT", "0.45"))
+    FREMD_AEHNLICHKEIT = 0.55
     labels = set((profil.get("interessen_profil") or {}).get("interessen_labels") or [])
     thema_embs = {}
     gate_verworfen = 0
@@ -191,7 +191,10 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
             continue
         sim = _cosine(emb_t, emb_v)
         grenze = MIN_AEHNLICHKEIT
-        if labels and v.get("kategorie") and v["kategorie"] not in labels:
+        # Hat der Nutzer Interessen-Labels, gilt fuer alles AUSSERHALB davon die
+        # hoehere Huerde — auch fuer UNkategorisierte Videos (kategorie=None ist
+        # meist fachfremder Watchlist-/Lifestyle-Content, kein Freifahrtschein).
+        if labels and (v.get("kategorie") not in labels):
             grenze = max(grenze, FREMD_AEHNLICHKEIT)
         if sim < grenze:
             gate_verworfen += 1
