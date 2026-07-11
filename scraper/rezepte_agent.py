@@ -315,6 +315,37 @@ def lade_rezepte():
     return speicher._lade_json(REZEPTE_DATEI, [])
 
 
+# Spalten der v2-rezepte-Tabelle (Supabase-Modus)
+_REZEPT_DB_FELDER = ("id", "plattform", "video_id", "url", "titel", "kanal",
+                     "views", "likes", "kommentare", "veroeffentlicht",
+                     "thumbnail_url", "dauer_s", "kategorie", "zutaten_kurz",
+                     "score", "fit_score", "haken", "begruendung", "status",
+                     "feedback", "gefunden_am")
+
+
+def _speichere_rezepte_supabase(kandidaten):
+    """Interims-Brücke Multi-Tenant: neue Rezepte fuer den Standard-Tenant
+    (RADAR_STANDARD_USER) in die rezepte-Tabelle upserten. ignore-duplicates
+    schuetzt Nutzer-Entscheidungen (status/feedback werden nie ueberschrieben).
+    TODO Phase 6: echte per-User-Schleife (Pro-Nutzer mit rezepte_aktiv)."""
+    user_id = os.environ.get("RADAR_STANDARD_USER", "").strip()
+    if not user_id:
+        print("[rezepte] Supabase-Modus ohne RADAR_STANDARD_USER — nichts gespeichert.")
+        return 0, 0
+    zeilen = []
+    for kand in kandidaten:
+        if not kand.get("id"):
+            continue
+        zeile = {k: kand.get(k) for k in _REZEPT_DB_FELDER}
+        zeile["haken"] = kand.get("chris_haken") or kand.get("haken") or ""
+        zeile["user_id"] = user_id
+        zeile.setdefault("status", "vorschlag")
+        zeilen.append(zeile)
+    ok = speicher._supabase_post("rezepte", zeilen,
+                                 prefer="return=minimal,resolution=ignore-duplicates")
+    return (len(zeilen) if ok else 0), 0
+
+
 def speichere_rezepte(kandidaten):
     """
     Kandidaten in den Bestand mergen. Neue ids -> komplett einfuegen.
@@ -323,6 +354,8 @@ def speichere_rezepte(kandidaten):
     score werden NIE ueberschrieben.
     Rueckgabe: (anzahl_neu, anzahl_aktualisiert)
     """
+    if speicher.daten_modus() == "supabase":
+        return _speichere_rezepte_supabase(kandidaten)
     bestand = lade_rezepte()
     index = {r.get("id"): r for r in bestand}
 
