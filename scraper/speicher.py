@@ -127,10 +127,12 @@ def lade_ohne_transkript(status_liste=("inbox", "strittig", "angenommen", "gespe
     """Videos ohne Transkript (fuer den Transkriptions-Backfill) vollstaendig laden.
     Default: nur Videos, mit denen Chris arbeitet (kein Archiv-Ballast)."""
     if daten_modus() == "supabase":
+        # v2-Pool: keine status-Spalte — Backfill nimmt die juengsten ohne Transkript
         zeilen = _supabase_get("videos", {
             "select": "*",
             "transkript": "is.null",
-            "status": "in.(%s)" % ",".join(status_liste),
+            "order": "gefunden_am.desc",
+            "limit": "200",
         })
         return zeilen or []
     return [v for v in _lade_json(VIDEOS_DATEI, [])
@@ -177,13 +179,10 @@ def lade_fuer_neubewertung():
     ohne Websuche-Verifikation (claim.websuche fehlt = alte Pipeline), und nur solche,
     die der Nutzer noch nicht entschieden hat (status inbox/strittig/archiv)."""
     if daten_modus() == "supabase":
-        zeilen = _supabase_get("videos", {
-            "select": "*",
-            "claim": "not.is.null",
-            "claim->>websuche": "is.null",
-            "status": "in.(%s)" % ",".join(ANALYSE_SCHREIBBAR),
-        })
-        return zeilen or []
+        # v2: Verdicts leben per-User in video_zuordnung — Neubewertung ist ein
+        # Lokal-Modus-Werkzeug (per-User-Aequivalent waere ein Kurations-Neulauf).
+        print("[speicher] lade_fuer_neubewertung: im Supabase-Modus nicht verfuegbar (v2).")
+        return []
     return [v for v in _lade_json(VIDEOS_DATEI, [])
             if v.get("claim") and not v["claim"].get("websuche")
             and v.get("status") in ANALYSE_SCHREIBBAR]
@@ -192,7 +191,9 @@ def lade_fuer_neubewertung():
 def lade_unanalysierte():
     """Videos ohne Analyse (claim=null, status=inbox) vollstaendig laden — fuer --nachanalyse."""
     if daten_modus() == "supabase":
-        zeilen = _supabase_get("videos", {"select": "*", "claim": "is.null", "status": "eq.inbox"})
+        # v2: Pool-Videos ohne Claim (Stufe A/B beim naechsten Akquise-Lauf faellig)
+        zeilen = _supabase_get("videos", {"select": "*", "claim": "is.null",
+                                          "order": "gefunden_am.desc", "limit": "200"})
         return zeilen or []
     return [v for v in _lade_json(VIDEOS_DATEI, [])
             if not v.get("claim") and v.get("status") == "inbox"]
@@ -471,7 +472,8 @@ def _supabase_lade_videos():
     seite = 0
     while True:
         zeilen = _supabase_get("videos", {
-            "select": "id,views,likes,kommentare,transkript,caption,kanal_follower,dauer_s,thumbnail_url,status",
+            # v2-Pool: KEINE status-Spalte (die lebt in video_zuordnung)
+            "select": "id,views,likes,kommentare,transkript,caption,kanal_follower,dauer_s,thumbnail_url",
             "limit": "1000",
             "offset": str(seite * 1000),
         })
