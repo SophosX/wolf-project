@@ -398,14 +398,23 @@ def _schema_stufe_ab(themen_slugs):
     }
 
 
-_SYSTEM_STUFE_AB = """Du bist der Vorfilter des 'Wolf Radar' — einer App, die für den deutschen
-Fitness-Creator Christian Wolf Videos mit Ernährungs-Falschinformationen findet.
+# Standard-Nische (Lokal-/Christian-Betrieb). Multi-Tenant: pro Nutzer aus radar_profile.nische.
+STANDARD_NISCHE = "Ernährung, Abnehmen, Fitness oder Gesundheit"
+
+
+def _system_stufe_ab(nische=None):
+    nische = (nische or STANDARD_NISCHE).strip()
+    return """Du bist der Vorfilter eines Debunk-Radars — einer App, die für Creator
+Videos mit Falschinformationen aus ihrer Nische findet.
+
+NISCHE DIESES RADARS: """ + nische + """
 
 Prüfe JEDEN übergebenen Video-Kandidaten auf genau drei Kriterien:
 1. deutsch: Ist der Inhalt (Titel/Caption/Transkript) deutschsprachig?
-2. themenbezug: Geht es um Ernährung, Abnehmen, Fitness oder Gesundheit?
-3. sachaussage: Enthält das Video mindestens eine KONKRETE, PRÜFBARE Sachaussage über die
-   WIRKUNG von Ernährung/Lebensmitteln/Stoffen/Training auf Körper oder Gesundheit?
+2. themenbezug: Geht es thematisch um die oben genannte Nische?
+3. sachaussage: Enthält das Video mindestens eine KONKRETE, PRÜFBARE Sachaussage mit
+   Behauptungscharakter aus dieser Nische (z. B. über die WIRKUNG von
+   Ernährung/Lebensmitteln/Stoffen/Training auf Körper oder Gesundheit)?
    (NICHT ausreichend: bloße Meinung, Geschmacksurteil, reine Werbung, reines Rezept ohne
    Gesundheits-Behauptung, persönlicher Erfahrungsbericht ohne verallgemeinernde Behauptung.
    AUCH NICHT ausreichend: reine META-AUSSAGEN über Industrie, Medien, Studienlage oder
@@ -437,13 +446,13 @@ auch Aufklärungs-/Debunk-Videos haben eine prüfbare Sachaussage und passieren 
 Gib für jede übergebene ID GENAU EIN Ergebnis zurück und übernimm die ID unverändert."""
 
 
-def _stufe_ab_batch(kandidaten, themen_slugs):
+def _stufe_ab_batch(kandidaten, themen_slugs, nische=None):
     """Führt Stufe A+B für eine Gruppe Kandidaten in einem Gemini-Aufruf aus."""
     bloecke = []
     for video in kandidaten:
         bloecke.append("=== KANDIDAT ===\n" + _video_kontext(video))
     prompt = "\n\n".join(bloecke)
-    daten = gemini_json(prompt, system=_SYSTEM_STUFE_AB,
+    daten = gemini_json(prompt, system=_system_stufe_ab(nische),
                         schema=_schema_stufe_ab(themen_slugs), temperatur=0.1)
     ergebnisse = {e.get("id"): e for e in daten.get("ergebnisse", [])}
     fehlend = [v.get("id") for v in kandidaten if v.get("id") not in ergebnisse]
@@ -452,7 +461,7 @@ def _stufe_ab_batch(kandidaten, themen_slugs):
     return ergebnisse
 
 
-def _stufe_ab(kandidaten, themen_slugs):
+def _stufe_ab(kandidaten, themen_slugs, nische=None):
     """
     Stufe A+B mit Batching; fällt bei Inkonsistenzen auf Einzel-Aufrufe zurück.
     Rückgabe: {video_id: ergebnis_dict}
@@ -461,12 +470,12 @@ def _stufe_ab(kandidaten, themen_slugs):
     for i in range(0, len(kandidaten), BATCH_GROESSE_STUFE_AB):
         gruppe = kandidaten[i:i + BATCH_GROESSE_STUFE_AB]
         try:
-            ergebnisse.update(_stufe_ab_batch(gruppe, themen_slugs))
+            ergebnisse.update(_stufe_ab_batch(gruppe, themen_slugs, nische))
         except Exception as fehler:
             logger.warning("Stufe A/B Batch fehlgeschlagen (%s) — versuche Einzelaufrufe.", fehler)
             for video in gruppe:
                 try:
-                    ergebnisse.update(_stufe_ab_batch([video], themen_slugs))
+                    ergebnisse.update(_stufe_ab_batch([video], themen_slugs, nische))
                 except Exception as einzel_fehler:
                     logger.error("Stufe A/B endgültig fehlgeschlagen für %s: %s",
                                  video.get("id"), einzel_fehler)
@@ -496,16 +505,17 @@ _SCHEMA_VERDICT = {
 
 
 def _system_verdict(positions_tabelle):
-    return """Du bist der konservative Faktenprüfer des 'Wolf Radar' für den Fitness-Creator
-Christian Wolf. Du bewertest, ob die extrahierte Aussage eines Videos eine klare
-Ernährungs-Falschinformation ist, gegen die Chris ein Reaktionsvideo machen würde.
+    return """Du bist der konservative Faktenprüfer eines Debunk-Radars für einen Creator,
+der Falschinformationen aus seiner Nische richtigstellt. Du bewertest, ob die extrahierte
+Aussage eines Videos eine klare Falschinformation ist, gegen die der Creator ein
+Reaktionsvideo machen würde.
 
-CHRIS' BELEGTE POSITIONEN (verbindlicher Maßstab — nur was hier gedeckt ist, darf
-'klar_falsch' werden):
+DIE BELEGTEN POSITIONEN DES CREATORS (verbindlicher Maßstab — nur was hier gedeckt ist,
+darf 'klar_falsch' werden):
 
 """ + positions_tabelle + """
 
-Zusätzlich können im Prompt CHRIS' EIGENE AUSSAGEN ZUM THEMA stehen (O-Ton aus seinen
+Zusätzlich können im Prompt EIGENE AUSSAGEN DES CREATORS ZUM THEMA stehen (O-Ton aus seinen
 Videos, per Retrieval gefunden): Nutze sie als Beleg dafür, ob und wie die Aussage von
 seinen Positionen gedeckt ist — sie ersetzen aber NICHT die wissenschaftliche Prüfung.
 
@@ -559,9 +569,13 @@ KALIBRIER-BEISPIELE:
    3 = typischer Abnehm-Mythos, 2 = eher harmloser Irrtum, 1 = kosmetisch."""
 
 
-def _chris_o_ton_block(aussage):
-    """O-Ton-Passagen aus Chris' Videos zum Claim (Narrativ-RAG); '' bei Fehlern."""
+def _o_ton_block(aussage, narrativ_fn=None):
+    """O-Ton-Passagen aus den EIGENEN Videos des Creators zum Claim (Narrativ-RAG).
+    narrativ_fn: optionaler per-User-Retriever (Multi-Tenant); Default = Datei-Index
+    des Lokal-Betriebs (narrativ.py). '' bei Fehlern."""
     try:
+        if narrativ_fn is not None:
+            return narrativ_fn(aussage) or ""
         import narrativ
         return narrativ.zitat_block(aussage, k=2)
     except Exception as fehler:
@@ -569,8 +583,12 @@ def _chris_o_ton_block(aussage):
         return ""
 
 
-def _stufe_c(video, aussage, positions_tabelle):
-    o_ton = _chris_o_ton_block(aussage)
+_chris_o_ton_block = _o_ton_block  # Rueckwaerts-Alias
+
+
+def _stufe_c(video, aussage, positions_tabelle, o_ton=None, narrativ_fn=None):
+    if o_ton is None:
+        o_ton = _o_ton_block(aussage, narrativ_fn)
     prompt = (
         "VIDEO-KONTEXT:\n" + _video_kontext(video) +
         "\n\nEXTRAHIERTE AUSSAGE (zu bewerten):\n\"" + str(aussage) + "\"\n\n"
@@ -716,11 +734,16 @@ def _stufe_c_websuche(video, aussage):
     return ergebnis
 
 
-def _stufe_c_plus_anwenden(video, aussage, verdict_daten):
+def _stufe_c_plus_anwenden(video, aussage, verdict_daten, webcheck_cache=None):
     """Websuche-Verifikation auf ein Stufe-C-Ergebnis anwenden (mutiert verdict_daten).
 
     Läuft nur für (a) prospektive Inbox-Funde (klar_falsch, Konfidenz über Schwelle)
     und (b) ereignisabhängige Fälle, die das Aktualitäts-Netz auf strittig gesetzt hat.
+
+    webcheck_cache: bereits vorhandenes Websuche-Ergebnis dieses Videos
+    ({urteil, begruendung, quellen}) aus dem geteilten Pool — dann kein neuer
+    API-Call. Das frische Ergebnis wird unter verdict_daten['_webcheck_roh']
+    zurückgegeben, damit Aufrufer es am Pool-Video cachen können.
     """
     if not WEBCHECK_AKTIV:
         return verdict_daten
@@ -734,8 +757,15 @@ def _stufe_c_plus_anwenden(video, aussage, verdict_daten):
         verdict_daten["websuche"] = "uebersprungen"
         return verdict_daten
 
-    ergebnis = _stufe_c_websuche(video, aussage)
-    time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+    if webcheck_cache and webcheck_cache.get("urteil") in _WEBCHECK_URTEILE:
+        ergebnis = webcheck_cache
+        logger.info("Stufe C+ %s: Webcheck aus Pool-Cache übernommen (%s).",
+                    video.get("id"), ergebnis["urteil"])
+    else:
+        ergebnis = _stufe_c_websuche(video, aussage)
+        time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+        if ergebnis is not None:
+            verdict_daten["_webcheck_roh"] = ergebnis
     if ergebnis is None:
         verdict_daten["websuche"] = "fehlgeschlagen"
         return verdict_daten
@@ -861,11 +891,12 @@ _INTERESSEN_ALIAS = {
 }
 
 
-def _wissensbasis_boni(video, thema_slug):
-    """(interessen_faktor, personen_bonus): Passt das Video zu Chris' Reaktions-Historie?
-    - interessen_faktor 0.9-1.25: Thema, auf das Chris nachweislich oft reagiert, rankt hoeher
-    - personen_bonus 0-30: Absender ist eine Person, auf die Chris schon reagiert hat"""
-    wb = lade_wissensbasis()
+def _wissensbasis_boni(video, thema_slug, wissensbasis=None):
+    """(interessen_faktor, personen_bonus): Passt das Video zur Reaktions-Historie des Creators?
+    - interessen_faktor 0.9-1.25: Thema, auf das er nachweislich oft reagiert, rankt hoeher
+    - personen_bonus 0-30: Absender ist eine Person, auf die er schon reagiert hat
+    wissensbasis: per-User-Dict (Multi-Tenant); Default = Datei des Lokal-Betriebs."""
+    wb = wissensbasis if wissensbasis is not None else lade_wissensbasis()
     profil = wb.get("interessen_profil") or {}
     interesse = profil.get(thema_slug)
     if interesse is None:
@@ -888,11 +919,11 @@ def _wissensbasis_boni(video, thema_slug):
     return interessen_faktor, personen_bonus
 
 
-def berechne_scores(video, verdict_daten, thema_slug, gelernt, themen):
+def berechne_scores(video, verdict_daten, thema_slug, gelernt, themen, wissensbasis=None):
     """Stufe D komplett: Teil-Scores + Gesamt-Score nach Kontrakt (0.4/0.4/0.2).
     Wissensbasis-Einfluss: Interessen-Profil skaliert die Relevanz, Reaktions-Historie
     des Absenders erhoeht die Tauglichkeit (wie ein Watchlist-Treffer)."""
-    interessen_faktor, personen_bonus = _wissensbasis_boni(video, thema_slug)
+    interessen_faktor, personen_bonus = _wissensbasis_boni(video, thema_slug, wissensbasis)
     reichweite = _reichweite_score(video)
     relevanz = _relevanz_score(thema_slug, verdict_daten["konfidenz"],
                                verdict_daten["schadenspotential"], gelernt, themen)
@@ -922,26 +953,160 @@ def _markiere_verworfen(video, verdict, begruendung, aussage=None, thema=None, i
     }
 
 
-def analysiere_batch(kandidaten, gelernt):
+def positionen_als_text(positionen):
+    """radar_profile.positionen ([{thema, position, kurzbeleg}]) als Prompt-Text —
+    Multi-Tenant-Ersatz fuer die themenlandkarte.md-Tabelle."""
+    if not positionen:
+        return ""
+    zeilen = ["Belegte Positionen des Creators:"]
+    for p in positionen:
+        if not isinstance(p, dict) or not p.get("position"):
+            continue
+        zeile = "- %s: %s" % (p.get("thema") or "Allgemein", p["position"])
+        if p.get("kurzbeleg"):
+            zeile += " (Beleg: %s)" % p["kurzbeleg"]
+        zeilen.append(zeile)
+    return "\n".join(zeilen) if len(zeilen) > 1 else ""
+
+
+def extrahiere_claims(kandidaten, themen_slugs=None, nische=None):
+    """NUR Stufe A+B (mandantenneutral) — fuer den geteilten Akquise-Lauf.
+    Annotiert Kandidaten in place mit video['claim'] = {aussage, thema, ...} bzw.
+    verwirft sie (claim.verdict='aussortiert'). Rueckgabe: Liste der Kandidaten
+    MIT extrahierter Aussage (Verdict/Score kommen erst in der per-User-Kuration)."""
+    if not kandidaten:
+        return []
+    if themen_slugs is None:
+        themen_slugs = sorted(lade_themen().keys())
+    ab_ergebnisse = _stufe_ab(kandidaten, themen_slugs, nische)
+    mit_claim = []
+    for video in kandidaten:
+        vid = video.get("id")
+        e = ab_ergebnisse.get(vid)
+        if e is None:
+            continue  # API-Fehler: naechster Lauf versucht erneut
+        if not (e.get("deutsch") and e.get("themenbezug") and e.get("sachaussage")):
+            _markiere_verworfen(video, "aussortiert",
+                                e.get("begruendung") or "Kein Themenbezug oder keine prüfbare Sachaussage.")
+            continue
+        aussage = (e.get("aussage") or "").strip()
+        if not aussage:
+            _markiere_verworfen(video, "aussortiert", "Keine konkrete prüfbare Aussage extrahierbar.")
+            continue
+        video["claim"] = {
+            "aussage": aussage,
+            "thema": e.get("thema"),
+            "verdict": None,       # kommt erst in der per-User-Kuration
+            "konfidenz": None,
+            "begruendung": e.get("begruendung") or "",
+        }
+        mit_claim.append(video)
+    return mit_claim
+
+
+def bewerte_kandidat(video, aussage, thema, gelernt, themen, positions_tabelle,
+                     wissensbasis=None, narrativ_fn=None, webcheck_cache=None):
+    """Stufe C -> C+ -> D fuer EINEN Kandidaten gegen ein konkretes Creator-Profil.
+    Rueckgabe: angereichertes Video-Dict (status inbox|strittig) ODER None, wenn die
+    Aussage 'korrekt' ist (der Kandidat wird dann in place als verworfen annotiert).
+    Wirft bei API-Fehlern (Aufrufer entscheidet ueber Retry)."""
+    vid = video.get("id")
+    o_ton = _o_ton_block(aussage, narrativ_fn)
+    verdict_daten = _stufe_c(video, aussage, positions_tabelle, o_ton=o_ton)
+    time.sleep(PAUSE_ZWISCHEN_CALLS_S)
+    verdict_daten = _stufe_c_plus_anwenden(video, aussage, verdict_daten,
+                                           webcheck_cache=webcheck_cache)
+
+    verdict = verdict_daten["verdict"]
+    konfidenz = verdict_daten["konfidenz"]
+    if verdict == "korrekt":
+        logger.info("Verworfen (Stufe C) %s: korrekt%s — %s", vid,
+                    " (Debunk)" if verdict_daten.get("ist_debunk") else "",
+                    verdict_daten.get("begruendung", ""))
+        _markiere_verworfen(video, "korrekt",
+                            verdict_daten.get("begruendung", "Aussage ist wissenschaftlich haltbar."),
+                            aussage=aussage, thema=thema,
+                            ist_debunk=bool(verdict_daten.get("ist_debunk")),
+                            websuche=verdict_daten.get("websuche") or "uebersprungen",
+                            quellen=verdict_daten.get("websuche_quellen"))
+        if verdict_daten.get("_webcheck_roh"):
+            video["_webcheck_roh"] = verdict_daten["_webcheck_roh"]
+        return None
+
+    # Konservativ OHNE Transkript: Bei TikTok/Instagram ohne Transkript kennt die
+    # KI nur Titel + (oft Clickbait-)Caption — das reicht NICHT fuer ein bestaetigtes
+    # "klar_falsch" in der Inbox.
+    kein_transkript = not (video.get("transkript") or "").strip()
+    kurzvideo = video.get("plattform") in ("tiktok", "instagram")
+    if verdict == "klar_falsch" and konfidenz >= 0.75 and kein_transkript and kurzvideo:
+        logger.info("%s: klar_falsch, aber ohne Transkript (nur Titel/Caption) "
+                    "→ strittig (konservativ).", vid)
+        verdict = "strittig"
+        konfidenz = min(konfidenz, 0.74)
+        verdict_daten["begruendung"] = (
+            "[ohne Transkript – nur nach Titel/Caption bewertet] "
+            + verdict_daten.get("begruendung", ""))
+
+    # Status nach Kontrakt: klar_falsch + Konfidenz >= 0.75 → inbox; sonst strittig
+    if verdict == "klar_falsch" and konfidenz >= 0.75:
+        status = "inbox"
+    else:
+        if verdict == "klar_falsch":
+            logger.info("%s: klar_falsch, aber Konfidenz %.2f < 0.75 → strittig (konservativ).",
+                        vid, konfidenz)
+            verdict = "strittig"
+        status = "strittig"
+
+    score, scores = berechne_scores(video, verdict_daten, thema, gelernt, themen,
+                                    wissensbasis=wissensbasis)
+
+    angereichert = dict(video)
+    angereichert["status"] = status
+    angereichert["score"] = score
+    angereichert["scores"] = scores
+    angereichert["claim"] = {
+        "aussage": aussage,
+        "verdict": verdict,
+        "konfidenz": round(konfidenz, 2),
+        "begruendung": verdict_daten["begruendung"],
+        "thema": thema,
+        "websuche": verdict_daten.get("websuche"),
+        "quellen": verdict_daten.get("websuche_quellen") or [],
+    }
+    if verdict_daten.get("_webcheck_roh"):
+        angereichert["_webcheck_roh"] = verdict_daten["_webcheck_roh"]
+    logger.info("Behalten %s: %s (%.2f) → status=%s score=%d thema=%s",
+                vid, verdict, konfidenz, status, score, thema)
+    return angereichert
+
+
+def analysiere_batch(kandidaten, gelernt, profil=None):
     """
     Analysiert Kandidaten-Videos in vier Stufen. Gibt NUR die Überlebenden zurück —
     angereichert um claim, score, scores und status (inbox | strittig).
 
     kandidaten: Liste von video-dicts nach Kontrakt (mind. id, titel; caption/transkript optional)
     gelernt   : einstellungen.gelernt ({"themen_boost": {...}, "notizen": [...]}) oder {}
+    profil    : optionales Creator-Profil (Multi-Tenant): {nische, positionen_text,
+                themen, wissensbasis, narrativ_fn}. Ohne profil laeuft der bisherige
+                Lokal-/Christian-Betrieb (mythen_katalog + wissen/-Dateien) unveraendert.
     """
     if not kandidaten:
         return []
     gelernt = gelernt or {}
-    themen = lade_themen()
+    profil = profil or {}
+    themen = profil.get("themen") or lade_themen()
     themen_slugs = sorted(themen.keys())
-    positions_tabelle = lade_positions_tabelle()
+    positions_tabelle = profil.get("positionen_text") or lade_positions_tabelle()
+    nische = profil.get("nische")
+    wissensbasis = profil.get("wissensbasis")
+    narrativ_fn = profil.get("narrativ_fn")
 
     logger.info("Analyse startet: %d Kandidaten, %d Themen-Slugs.",
                 len(kandidaten), len(themen_slugs))
 
     # --- Stufe A+B ---------------------------------------------------------
-    ab_ergebnisse = _stufe_ab(kandidaten, themen_slugs)
+    ab_ergebnisse = _stufe_ab(kandidaten, themen_slugs, nische)
 
     ueberlebende = []
     for video in kandidaten:
@@ -972,76 +1137,16 @@ def analysiere_batch(kandidaten, gelernt):
     for video, aussage, thema in ueberlebende:
         vid = video.get("id")
         try:
-            verdict_daten = _stufe_c(video, aussage, positions_tabelle)
+            angereichert = bewerte_kandidat(video, aussage, thema, gelernt, themen,
+                                            positions_tabelle, wissensbasis=wissensbasis,
+                                            narrativ_fn=narrativ_fn)
         except Exception as fehler:
             logger.error("Stufe C fehlgeschlagen für %s: %s — Kandidat wird übersprungen.", vid, fehler)
             continue
-        time.sleep(PAUSE_ZWISCHEN_CALLS_S)
-
-        # Stufe C+: prospektive Inbox-Funde + ereignisabhängige Fälle per Websuche verifizieren
-        verdict_daten = _stufe_c_plus_anwenden(video, aussage, verdict_daten)
-
-        verdict = verdict_daten["verdict"]
-        konfidenz = verdict_daten["konfidenz"]
-        if verdict == "korrekt":
-            logger.info("Verworfen (Stufe C) %s: korrekt%s — %s", vid,
-                        " (Debunk)" if verdict_daten.get("ist_debunk") else "",
-                        verdict_daten.get("begruendung", ""))
-            _markiere_verworfen(video, "korrekt",
-                                verdict_daten.get("begruendung", "Aussage ist wissenschaftlich haltbar."),
-                                aussage=aussage, thema=thema,
-                                ist_debunk=bool(verdict_daten.get("ist_debunk")),
-                                websuche=verdict_daten.get("websuche") or "uebersprungen",
-                                quellen=verdict_daten.get("websuche_quellen"))
-            continue
-
-        # Konservativ OHNE Transkript: Bei TikTok/Instagram ohne Transkript kennt die
-        # KI nur Titel + (oft Clickbait-)Caption — das reicht NICHT fuer ein bestaetigtes
-        # "klar_falsch" in der Inbox. Solche Faelle hoechstens "strittig" (sichtbar im
-        # Strittig-Tab, aber kein Auto-Skript, kein "bestaetigter Fund"). Mit dem
-        # verbesserten Transkript-Budget bekommen echte Funde ein Transkript und
-        # landen reguläer in der Inbox.
-        kein_transkript = not (video.get("transkript") or "").strip()
-        kurzvideo = video.get("plattform") in ("tiktok", "instagram")
-        if verdict == "klar_falsch" and konfidenz >= 0.75 and kein_transkript and kurzvideo:
-            logger.info("%s: klar_falsch, aber ohne Transkript (nur Titel/Caption) "
-                        "→ strittig (konservativ).", vid)
-            verdict = "strittig"
-            konfidenz = min(konfidenz, 0.74)
-            verdict_daten["begruendung"] = (
-                "[ohne Transkript – nur nach Titel/Caption bewertet] "
-                + verdict_daten.get("begruendung", ""))
-
-        # Status nach Kontrakt: klar_falsch + Konfidenz >= 0.75 → inbox; sonst strittig
-        if verdict == "klar_falsch" and konfidenz >= 0.75:
-            status = "inbox"
-        else:
-            if verdict == "klar_falsch":
-                logger.info("%s: klar_falsch, aber Konfidenz %.2f < 0.75 → strittig (konservativ).",
-                            vid, konfidenz)
-                verdict = "strittig"
-            status = "strittig"
-
-        score, scores = berechne_scores(video, verdict_daten, thema, gelernt, themen)
-
-        angereichert = dict(video)
-        angereichert["status"] = status
-        angereichert["score"] = score
-        angereichert["scores"] = scores
-        angereichert["claim"] = {
-            "aussage": aussage,
-            "verdict": verdict,
-            "konfidenz": round(konfidenz, 2),
-            "begruendung": verdict_daten["begruendung"],
-            "thema": thema,
-            # Transparenz: Ergebnis der Websuche-Verifikation (Stufe C+), falls gelaufen
-            "websuche": verdict_daten.get("websuche"),
-            # Belege aus der Websuche: jede Falschbehauptung kommt MIT Quellen in die Inbox
-            "quellen": verdict_daten.get("websuche_quellen") or [],
-        }
+        if angereichert is None:
+            continue  # korrekt/Debunk — in place als verworfen annotiert
+        angereichert.pop("_webcheck_roh", None)  # nur fuer den Pool-Cache relevant
         ergebnis_liste.append(angereichert)
-        logger.info("Behalten %s: %s (%.2f) → status=%s score=%d thema=%s",
-                    vid, verdict, konfidenz, status, score, thema)
 
     ergebnis_liste.sort(key=lambda v: v.get("score", 0), reverse=True)
     logger.info("Analyse fertig: %d von %d Kandidaten behalten.",
