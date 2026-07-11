@@ -22,11 +22,35 @@ export default async function PersonenSeite() {
       {daten.reaktions_ausloeser.length > 0 && (
         <div className="karte" style={{ padding: 16, marginTop: 14 }}>
           <div className="abschnitt-titel">Was dich erfahrungsgemäß triggert</div>
-          <ul style={{ paddingLeft: 18, lineHeight: 1.8 }}>
-            {daten.reaktions_ausloeser.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
+          {daten.trigger_details && daten.trigger_details.length > 0 ? (
+            <ul style={{ paddingLeft: 18, lineHeight: 1.9 }}>
+              {daten.trigger_details.map((t, i) => (
+                <li key={i}>
+                  {t.trigger}{" "}
+                  {t.quelle === "feedback" && (
+                    <span className="badge-frisch" title={"Stärke " + Math.round((t.staerke || 0) * 100) + " %"}>
+                      🧠 gelernt aus deinem Feedback
+                    </span>
+                  )}
+                  {t.quelle === "interview" && (
+                    <span style={{ color: "var(--text-dim)", fontSize: 12 }}>
+                      · von dir bestätigt
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul style={{ paddingLeft: 18, lineHeight: 1.8 }}>
+              {daten.reaktions_ausloeser.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          )}
+          <p style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 8 }}>
+            Diese Liste lebt: Sie wurde aus deinen Videos aufgebaut und schreibt
+            sich anhand deiner Annehmen/Ablehnen-Entscheidungen täglich fort.
+          </p>
         </div>
       )}
     </>

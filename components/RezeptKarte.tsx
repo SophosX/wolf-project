@@ -24,7 +24,7 @@ function FitRing({ wert }: { wert: number }) {
   const anteil = Math.max(0, Math.min(100, wert)) / 100;
   const farbe = wert >= 75 ? "var(--gruen)" : wert >= 60 ? "var(--akzent)" : "#7d838a";
   return (
-    <div className="score-ring" title={"Chris-Fit " + wert + "/100"}>
+    <div className="score-ring" title={"Dein Fit " + wert + "/100"}>
       <svg width="54" height="54" viewBox="0 0 54 54">
         <circle cx="27" cy="27" r={r} fill="none" stroke="var(--linie)" strokeWidth="5" />
         <circle
@@ -128,7 +128,7 @@ export default function RezeptKarte({ rezept, bereich, onAktion }: Props) {
                   <b>Warum es passt:</b> {rezept.begruendung}
                 </p>
               )}
-              {rezept.chris_haken && (
+              {(rezept.haken || rezept.chris_haken) && (
                 <p
                   className="warum"
                   style={{
@@ -138,8 +138,8 @@ export default function RezeptKarte({ rezept, bereich, onAktion }: Props) {
                     padding: "8px 10px",
                   }}
                 >
-                  ⚠ <b style={{ color: "var(--akzent)" }}>Chris-Haken:</b>{" "}
-                  {rezept.chris_haken}
+                  ⚠ <b style={{ color: "var(--akzent)" }}>Dein Haken:</b>{" "}
+                  {rezept.haken || rezept.chris_haken}
                 </p>
               )}
             </div>
