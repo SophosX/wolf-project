@@ -214,7 +214,7 @@ export default function AgentenPanel() {
           <h2 className="abschnitt-titel">Was die letzte Suche ergab</h2>
           <p className="dim" style={{ margin: "0 0 10px" }}>
             {letzteSuche && <>{relativeZeit(letzteSuche.zeit)} · </>}
-            {suchProtokoll.length} Suchbegriffe auf YouTube durchsucht ·{" "}
+            {suchProtokoll.length} deiner Suchbegriffe auf YouTube durchsucht ·{" "}
             {suchProtokoll.reduce((s, p) => s + p.gefunden, 0)} Videos gesichtet
           </p>
           <div className="such-protokoll">
