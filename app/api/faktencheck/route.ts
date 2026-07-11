@@ -3,7 +3,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { aktuellerNutzer } from "@/lib/auth";
-import { holeVideo } from "@/lib/daten";
+import { datenModus, holeProfil, holeVideo } from "@/lib/daten";
+import { planLimits } from "@/lib/plan";
 import { faktencheck } from "@/lib/gemini";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ fehler: "video_id erforderlich" }, { status: 400 });
     }
     const nutzer = await aktuellerNutzer();
+    if (datenModus() === "supabase") {
+      const profil = await holeProfil(nutzer.userId).catch(() => null);
+      if (!planLimits(profil?.plan).webcheck) {
+        return NextResponse.json(
+          { fehler: "Der manuelle Websuche-Faktencheck ist ein Pro-Feature." },
+          { status: 403 }
+        );
+      }
+    }
     const video = await holeVideo(nutzer.userId, video_id);
     if (!video) {
       return NextResponse.json({ fehler: "Video nicht gefunden: " + video_id }, { status: 404 });
