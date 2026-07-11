@@ -145,7 +145,11 @@ def vorfilter(kandidaten, bestand_ids, limit=None, keywords=None):
         inhalt = " ".join(filter(None, [
             k.get("titel"), k.get("caption"), k.get("transkript")])).lower()
         if keywords is not None:
-            passt = any(kw in inhalt for kw in keywords)
+            # Akquise-Modus: Treffer aus der CLAIM-SUCHE sind per Definition
+            # zielgerichtet (die Nutzer-Query IST das Relevanz-Signal) — der
+            # Keyword-Grobfilter gilt nur fuer Watchlist-/Discovery-Uploads.
+            passt = (k.get("quelle") == "claim_suche"
+                     or any(kw in inhalt for kw in keywords))
         else:
             passt = bool(finde_themen(inhalt))
         if not passt:
