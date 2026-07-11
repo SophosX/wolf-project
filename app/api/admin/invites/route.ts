@@ -25,7 +25,12 @@ export async function GET() {
       .select("*")
       .order("erstellt_am", { ascending: false });
     if (error) throw new Error(error.message);
-    return NextResponse.json({ invites: data || [] });
+    const { data: anfragen } = await sb
+      .from("invite_anfragen")
+      .select("*")
+      .order("erstellt_am", { ascending: false })
+      .limit(100);
+    return NextResponse.json({ invites: data || [], anfragen: anfragen || [] });
   } catch (e) {
     console.error("[api/admin/invites GET]", e);
     return NextResponse.json({ fehler: "Invites nicht ladbar" }, { status: 500 });
@@ -37,8 +42,45 @@ export async function POST(req: NextRequest) {
     const admin = await adminNutzer();
     if (!admin) return KEIN_ZUGANG;
     const body = await req.json().catch(() => ({}));
-    const code = "radar-" + randomBytes(6).toString("base64url");
     const sb = await supabaseAdmin();
+
+    // Aktion auf eine ANFRAGE: ablehnen oder einladen (Code erzeugen + verknüpfen)
+    if (body.anfrage_id) {
+      const anfrageId = Number(body.anfrage_id);
+      if (body.ablehnen) {
+        await sb
+          .from("invite_anfragen")
+          .update({ status: "abgelehnt", bearbeitet_am: new Date().toISOString() })
+          .eq("id", anfrageId);
+        return NextResponse.json({ ok: true });
+      }
+      const { data: anfrage } = await sb
+        .from("invite_anfragen")
+        .select("email, name")
+        .eq("id", anfrageId)
+        .maybeSingle();
+      if (!anfrage) {
+        return NextResponse.json({ fehler: "Anfrage nicht gefunden." }, { status: 404 });
+      }
+      const code = "radar-" + randomBytes(6).toString("base64url");
+      const { error: invErr } = await sb.from("invites").insert({
+        code,
+        erstellt_von: admin.userId,
+        notiz: "Anfrage #" + anfrageId + ": " + (anfrage.name || anfrage.email),
+      });
+      if (invErr) throw new Error(invErr.message);
+      await sb
+        .from("invite_anfragen")
+        .update({
+          status: "eingeladen",
+          invite_code: code,
+          bearbeitet_am: new Date().toISOString(),
+        })
+        .eq("id", anfrageId);
+      return NextResponse.json({ ok: true, code, email: anfrage.email });
+    }
+
+    const code = "radar-" + randomBytes(6).toString("base64url");
     const { error } = await sb.from("invites").insert({
       code,
       erstellt_von: admin.userId,

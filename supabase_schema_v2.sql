@@ -105,6 +105,22 @@ create table if not exists invites (
 );
 alter table invites enable row level security;
 
+-- Invite-ANFRAGEN von der Landing ("Wer bist du, was willst du?").
+-- Public-Endpoint schreibt hier rein; Admin bearbeitet im Dashboard.
+create table if not exists invite_anfragen (
+  id bigint generated always as identity primary key,
+  name text,
+  email text not null,
+  kanal text,
+  nachricht text not null,
+  status text not null default 'offen'
+    check (status in ('offen','eingeladen','abgelehnt')),
+  invite_code text,
+  erstellt_am timestamptz not null default now(),
+  bearbeitet_am timestamptz
+);
+alter table invite_anfragen enable row level security;
+
 -- === Video-Pool (mandantenneutral) ========================================
 create table if not exists videos (
   id text primary key,                       -- "youtube:abc123"

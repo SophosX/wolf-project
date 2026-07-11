@@ -1,6 +1,8 @@
 // /start — öffentliche Landing für nicht eingeloggte Besucher.
 // Erklärt die Plattform, bietet Login + Signup. Keine Nutzerdaten, kein Auth.
 
+import InviteAnfrageForm from "@/components/InviteAnfrageForm";
+
 export const dynamic = "force-static";
 
 const SCHRITTE = [
@@ -90,7 +92,8 @@ export default function StartSeite() {
             </a>
           </div>
           <p className="landing-invite-hinweis">
-            Aktuell invite-only — du brauchst einen Einladungs-Code.
+            Aktuell invite-only — noch keinen Einladungs-Code?{" "}
+            <a href="#invite">Hier anfordern →</a>
           </p>
         </section>
 
@@ -161,6 +164,11 @@ export default function StartSeite() {
           </div>
         </section>
 
+        {/* Invite anfordern */}
+        <section className="landing-sektion">
+          <InviteAnfrageForm />
+        </section>
+
         {/* Login */}
         <section className="landing-sektion" id="login">
           <div className="karte landing-login">
@@ -186,6 +194,8 @@ export default function StartSeite() {
             </form>
             <p className="landing-dim" style={{ marginTop: 10 }}>
               Noch kein Konto? <a href="/signup">Radar starten →</a>
+              <br />
+              Kein Einladungs-Code? <a href="#invite">Invite anfordern</a>
             </p>
           </div>
         </section>

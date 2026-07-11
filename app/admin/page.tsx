@@ -25,6 +25,16 @@ interface Invite {
   nutzungen: number;
   erstellt_am: string;
 }
+interface InviteAnfrage {
+  id: number;
+  name: string | null;
+  email: string;
+  kanal: string | null;
+  nachricht: string;
+  status: string;
+  invite_code: string | null;
+  erstellt_am: string;
+}
 
 const LIMIT_FELDER: { key: string; label: string }[] = [
   { key: "kuration_max_neu", label: "Kuration max/Lauf" },
@@ -36,6 +46,7 @@ const LIMIT_FELDER: { key: string; label: string }[] = [
 export default function AdminSeite() {
   const [nutzer, setNutzer] = useState<NutzerZeile[] | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [anfragen, setAnfragen] = useState<InviteAnfrage[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
   const [meldung, setMeldung] = useState<string | null>(null);
   const [entwurf, setEntwurf] = useState<Record<string, Record<string, string>>>({});
@@ -58,7 +69,11 @@ export default function AdminSeite() {
       if (!nRes.ok) throw new Error(String(nRes.status));
       const nDaten = await nRes.json();
       setNutzer(nDaten.nutzer || []);
-      if (iRes.ok) setInvites((await iRes.json()).invites || []);
+      if (iRes.ok) {
+        const iDaten = await iRes.json();
+        setInvites(iDaten.invites || []);
+        setAnfragen(iDaten.anfragen || []);
+      }
     } catch {
       setFehler("Admin-Daten nicht ladbar.");
     }
@@ -110,6 +125,30 @@ export default function AdminSeite() {
       setInviteNotiz("");
       await lade();
     }
+  }
+
+  async function anfrageAktion(anfrageId: number, ablehnen: boolean) {
+    setMeldung(null);
+    const res = await fetch("/api/admin/invites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anfrage_id: anfrageId, ablehnen }),
+    });
+    const d = await res.json();
+    if (!res.ok) setFehler(d.fehler || "Aktion fehlgeschlagen.");
+    else if (d.code) {
+      setMeldung(
+        "Code für " + d.email + ": " + d.code +
+          " — Mail-Entwurf öffnet sich (Code wird NICHT automatisch verschickt)."
+      );
+      const betreff = encodeURIComponent("Dein Einladungs-Code für Dein Radar 📡");
+      const text = encodeURIComponent(
+        "Hi!\n\nHier ist dein Einladungs-Code für Dein Radar: " + d.code +
+          "\n\nRegistrieren: https://radar.suessstoffmafia.de/signup\n\nViel Spaß!"
+      );
+      window.open("mailto:" + d.email + "?subject=" + betreff + "&body=" + text);
+    }
+    await lade();
   }
 
   async function loescheInvite(code: string) {
@@ -191,6 +230,36 @@ export default function AdminSeite() {
           </div>
         </div>
       ))}
+
+      {anfragen.filter((a) => a.status === "offen").length > 0 && (
+        <div className="karte" style={{ padding: 16, marginTop: 20 }}>
+          <div className="abschnitt-titel">
+            📨 Invite-Anfragen ({anfragen.filter((a) => a.status === "offen").length} offen)
+          </div>
+          {anfragen
+            .filter((a) => a.status === "offen")
+            .map((a) => (
+              <div key={a.id} style={{ borderTop: "1px solid var(--linie)", padding: "10px 0" }}>
+                <div>
+                  <b>{a.name || a.email}</b>{" "}
+                  <span style={{ color: "var(--text-dim)", fontSize: 13 }}>
+                    {a.email}
+                    {a.kanal ? " · " + a.kanal : ""} · {a.erstellt_am?.slice(0, 16).replace("T", " ")}
+                  </span>
+                </div>
+                <p style={{ margin: "6px 0", fontSize: 14 }}>{a.nachricht}</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn primaer" onClick={() => anfrageAktion(a.id, false)}>
+                    ✓ Einladen (Code erzeugen)
+                  </button>
+                  <button className="btn" onClick={() => anfrageAktion(a.id, true)}>
+                    ✕ Ablehnen
+                  </button>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
 
       <div className="karte" style={{ padding: 16, marginTop: 20 }}>
         <div className="abschnitt-titel">Einladungs-Codes</div>

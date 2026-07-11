@@ -32,7 +32,7 @@ function authModus(): AuthModus {
 }
 
 // Ohne Session/Code frei erreichbare Pfade (Login, Signup + deren APIs)
-const FREIE_PFADE = new Set(["/start", "/login", "/api/login", "/signup", "/api/signup"]);
+const FREIE_PFADE = new Set(["/start", "/login", "/api/login", "/signup", "/api/signup", "/api/invite-anfrage"]);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
