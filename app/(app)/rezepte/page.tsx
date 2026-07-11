@@ -3,7 +3,7 @@
 // Kommentar (der Algorithmus lernt daraus). Gemerkte eingeklappt darunter.
 
 import { aktuellerNutzer } from "@/lib/auth";
-import { holeRezepte } from "@/lib/daten";
+import { datenModus, holeEinstellungsWert, holeRezepte } from "@/lib/daten";
 import RezeptListe from "@/components/RezeptListe";
 import RezeptVorschlagBox from "@/components/RezeptVorschlagBox";
 import type { Rezept } from "@/lib/typen";
@@ -24,6 +24,26 @@ export default async function RezepteSeite(props: {
   let gemerkte: Rezept[] = [];
   let kategorien: string[] = [];
   let ladefehler: string | null = null;
+
+  // Feature-Gate: Rezepte ist optional (Ernaehrungs-Nische)
+  if (datenModus() === "supabase") {
+    const nutzerFrueh = await aktuellerNutzer();
+    const aktiv = Boolean(
+      await holeEinstellungsWert(nutzerFrueh.userId, "rezepte_aktiv", false).catch(() => false)
+    );
+    if (!aktiv) {
+      return (
+        <div className="karte" style={{ padding: 16 }}>
+          <div className="abschnitt-titel">Rezepte-Radar ist aus</div>
+          <p>
+            Der Rezepte-Radar findet community-erprobte Rezepte — ein optionales
+            Zusatz-Feature vor allem für Ernährungs-Creator. Du kannst es unter{" "}
+            <a href="/einstellungen">Profil</a> aktivieren (Pro).
+          </p>
+        </div>
+      );
+    }
+  }
 
   try {
     // Kategorie-Auswahl aus allen Vorschlägen (unabhängig vom Filter)

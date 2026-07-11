@@ -124,8 +124,15 @@ export async function GET() {
       .from("suchqueries").select("id, plattform, query")
       .eq("user_id", nutzer.userId).eq("quelle", "lerner").eq("aktiv", false);
 
+    const { holeEinstellungsWert } = await import("@/lib/daten");
+    const rezepteAktiv = Boolean(
+      await holeEinstellungsWert(nutzer.userId, "rezepte_aktiv", false).catch(() => false)
+    );
+
     return NextResponse.json({
       status: profil?.onboarding_status || "offen",
+      plan: profil?.plan || "free",
+      rezepte_aktiv: rezepteAktiv,
       fortschritt:
         (importAuftrag?.payload as { schritt?: string } | null)?.schritt || null,
       import_status: importAuftrag?.status || null,
@@ -343,13 +350,25 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    // Rezepte-Radar an/aus (nur wenn der Plan es erlaubt)
+    if (typeof body.rezepte_aktiv === "boolean") {
+      const konto = await holeProfil(nutzer.userId).catch(() => null);
+      const { planLimits } = await import("@/lib/plan");
+      if (planLimits(konto?.plan, konto?.limits).rezepte) {
+        const { speichereEinstellungsWert } = await import("@/lib/daten");
+        await speichereEinstellungsWert(nutzer.userId, "rezepte_aktiv", body.rezepte_aktiv);
+      }
+    }
+
     if (body.fertig) {
       await sb
         .from("profiles")
         .update({ onboarding_status: "fertig" })
         .eq("id", nutzer.userId);
-      // Erste Kuration sofort anstoßen — die Inbox soll nicht leer starten
-      await sb.from("auftraege").insert({ user_id: nutzer.userId, typ: "kuration" });
+      // Sofort einen VOLLEN Lauf anstoßen (typ 'lauf' = Akquise mit den
+      // frischen Queries des Nutzers + direkt seine Kuration) — erste eigene
+      // Funde in ~15-30 min statt erst beim nächsten Cron-Slot.
+      await sb.from("auftraege").insert({ user_id: nutzer.userId, typ: "lauf" });
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

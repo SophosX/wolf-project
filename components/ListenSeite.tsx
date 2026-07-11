@@ -73,8 +73,9 @@ export default async function ListenSeite({
             Eine leere Inbox heißt nicht, dass nichts passiert: Dein Radar
             durchsucht <b>automatisch alle paar Stunden</b> YouTube, TikTok und
             Instagram mit deinen Suchanfragen und prüft jeden Kandidaten gegen
-            deine Positionen — nur echte Treffer landen hier. Die erste gut
-            gefüllte Inbox wächst über die ersten 24–48 Stunden.
+            deine Positionen — nur echte Treffer landen hier. Nach dem Start
+            dauert die erste eigene Suche ~30 Minuten; eine gut gefüllte Inbox
+            wächst über die ersten 24–48 Stunden.
           </p>
           <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
             Tipp: Unter <a href="/agenten">Agenten</a> kannst du „Jetzt suchen“

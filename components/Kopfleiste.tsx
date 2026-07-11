@@ -1,7 +1,7 @@
 // Kopfleiste (Server-Komponente): Logo + Tabs mit Live-Zählern
 
 import { aktuellerNutzer } from "@/lib/auth";
-import { datenModus, holeProfil, holeRadarProfil, zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
+import { datenModus, holeEinstellungsWert, holeProfil, holeRadarProfil, zaehleRezeptVorschlaege, zaehleStatus } from "@/lib/daten";
 import NavTabs from "./NavTabs";
 
 export default async function Kopfleiste() {
@@ -20,6 +20,9 @@ export default async function Kopfleiste() {
   let marke: string | null = null;
   let logo = "🐺";
   let istAdmin = false;
+  // Rezepte ist ein optionales Feature (Ernaehrungs-Nische) — Tab nur, wenn
+  // der Nutzer es aktiviert hat. Lokal-Modus: immer an (Christian-Dev).
+  let rezepteAktiv = datenModus() !== "supabase";
   if (datenModus() === "supabase") {
     try {
       const [profil, konto] = await Promise.all([
@@ -34,6 +37,9 @@ export default async function Kopfleiste() {
       }
       // Admin-Tab nur bei echter Anmeldung (nicht im offenen Code-Betrieb)
       istAdmin = nutzer.quelle === "supabase" && konto?.rolle === "admin";
+      rezepteAktiv = Boolean(
+        await holeEinstellungsWert(nutzer.userId, "rezepte_aktiv", false)
+      );
     } catch (e) {
       console.error("[Kopfleiste] Profil nicht ladbar:", e);
     }
@@ -54,7 +60,7 @@ export default async function Kopfleiste() {
     { pfad: "/angenommen", label: "Angenommen", zahl: zaehler.angenommen },
     { pfad: "/gespeichert", label: "Gespeichert", zahl: zaehler.gespeichert },
     { pfad: "/strittig", label: "Strittig", zahl: zaehler.strittig },
-    { pfad: "/rezepte", label: "Rezepte", zahl: rezepte },
+    ...(rezepteAktiv ? [{ pfad: "/rezepte", label: "Rezepte", zahl: rezepte }] : []),
     { pfad: "/personen", label: "Personen", zahl: null },
     { pfad: "/archiv", label: "Archiv", zahl: zaehler.abgelehnt + zaehler.archiv },
     { pfad: "/agenten", label: "Agenten", zahl: null },

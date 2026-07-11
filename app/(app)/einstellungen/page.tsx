@@ -16,6 +16,8 @@ interface Vorschlaege {
 }
 interface Daten {
   status: string;
+  plan?: string;
+  rezepte_aktiv?: boolean;
   profil: { nische: string | null; marke: string | null; reaktions_ausloeser: Trigger[] } | null;
   themen: Thema[];
   queries: Query[];
@@ -38,6 +40,7 @@ export default function EinstellungenSeite() {
   const [neuePlattform, setNeuePlattform] = useState("youtube");
   const [loeschListe, setLoeschListe] = useState<number[]>([]);
   const [labelEntwurf, setLabelEntwurf] = useState<string[] | null>(null);
+  const [rezepteEntwurf, setRezepteEntwurf] = useState<boolean | null>(null);
 
   const lade = useCallback(async () => {
     try {
@@ -103,6 +106,7 @@ export default function EinstellungenSeite() {
     setMeldung(null);
     try {
       const body: Record<string, unknown> = { themen_aktiv: themenAb };
+      if (rezepteEntwurf !== null) body.rezepte_aktiv = rezepteEntwurf;
       if (labelEntwurf !== null) body.labels_setzen = labelEntwurf;
       if (marke !== null) body.marke = marke;
       if (nische !== null) body.nische = nische;
@@ -325,6 +329,21 @@ export default function EinstellungenSeite() {
       >
         {laeuft ? "Speichert …" : "Änderungen speichern"}
       </button>
+
+      {daten.plan === "pro" && (
+        <div className="karte" style={{ padding: 16, marginTop: 12 }}>
+          <div className="abschnitt-titel">Zusatz-Features</div>
+          <label style={{ display: "block" }}>
+            <input
+              type="checkbox"
+              checked={rezepteEntwurf ?? Boolean(daten.rezepte_aktiv)}
+              onChange={(e) => setRezepteEntwurf(e.target.checked)}
+            />{" "}
+            Rezepte-Radar (findet community-erprobte Rezepte — vor allem für
+            Ernährungs-Creator sinnvoll)
+          </label>
+        </div>
+      )}
 
       <div className="karte" style={{ padding: 16, marginTop: 20 }}>
         <div className="abschnitt-titel">Konto</div>

@@ -22,6 +22,7 @@ CLI:
 
 import argparse
 import datetime
+import json
 import math
 import os
 import sys
@@ -72,6 +73,13 @@ def _watchlist_treffer(video, watchlist_personen):
     return False
 
 
+def _cosine(a, b):
+    skalar = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return skalar / (na * nb) if na and nb else 0.0
+
+
 def _match_score(video, thema_slug, themen, gelernt, auf_watchlist):
     """Deterministischer Vorab-Score fuers Ranking der Kandidaten (kein LLM)."""
     kerngewicht = themen.get(thema_slug, {}).get("kerngewicht", 0.7)
@@ -111,9 +119,11 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     gematcht = []
     gematcht_ids = set()
     for v in kandidaten:
+        # BEWUSST ohne Transkript: generische Keywords ("motivation", "freiheit")
+        # matchen sonst in jedem langen Transkript — Titel/Caption/Kernaussage
+        # tragen die eigentliche Themen-Information.
         text = " ".join(filter(None, [v.get("titel"), v.get("caption"),
-                                      (v.get("claim") or {}).get("aussage"),
-                                      v.get("transkript")]))
+                                      (v.get("claim") or {}).get("aussage")]))
         slugs = themenwelt.finde_themen_fuer(text, themen)
         auf_watchlist = _watchlist_treffer(v, watchlist)
         if not slugs and not auf_watchlist:
@@ -152,6 +162,46 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     if semantisch:
         print("[kuration] %s: +%d semantische Kandidaten (Pool-Vernetzung)"
               % (uid, semantisch))
+
+    # --- Relevanz-Gate: Keyword-Treffer sind nur ein VORSCHLAG — bestehen
+    # muss jeder Kandidat die semantische Naehe zwischen SEINEM Thema und der
+    # Kernaussage des Videos. Fachfremde Kategorie => hoehere Huerde.
+    MIN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT", "0.35"))
+    FREMD_AEHNLICHKEIT = 0.5
+    labels = set((profil.get("interessen_profil") or {}).get("interessen_labels") or [])
+    thema_embs = {}
+    gate_verworfen = 0
+    gefiltert = []
+    for eintrag in gematcht:
+        _, slug, v = eintrag
+        emb_v = v.get("claim_embedding")
+        if isinstance(emb_v, str):
+            try:
+                emb_v = json.loads(emb_v)
+            except ValueError:
+                emb_v = None
+        if not emb_v:
+            gefiltert.append(eintrag)  # Uebergangsfall: kein Embedding -> durchlassen
+            continue
+        if slug not in thema_embs:
+            thema_embs[slug] = speicher.hole_thema_embedding(uid, slug, themen.get(slug) or {})
+        emb_t = thema_embs[slug]
+        if not emb_t:
+            gefiltert.append(eintrag)
+            continue
+        sim = _cosine(emb_t, emb_v)
+        grenze = MIN_AEHNLICHKEIT
+        if labels and v.get("kategorie") and v["kategorie"] not in labels:
+            grenze = max(grenze, FREMD_AEHNLICHKEIT)
+        if sim < grenze:
+            gate_verworfen += 1
+            continue
+        gefiltert.append(eintrag)
+    gematcht = gefiltert
+    if gate_verworfen:
+        print("[kuration] %s: relevanz_gate=%d Kandidaten verworfen (zu themenfern)"
+              % (uid, gate_verworfen))
+
     gematcht.sort(key=lambda t: -t[0])
 
     cap = limit or limits["kuration_max_neu"]

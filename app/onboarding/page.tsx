@@ -383,12 +383,11 @@ export default function OnboardingSeite() {
           <div className="karte" style={{ padding: 16, marginTop: 12 }}>
             <div className="abschnitt-titel">Was nach dem Start passiert</div>
             <p style={{ fontSize: 14 }}>
-              Direkt nach dem Start durchsucht dein Radar den vorhandenen
-              Video-Bestand nach Treffern für dich — <b>die ersten Kandidaten sind
-              in wenigen Minuten da</b>. Ab dann sucht es automatisch alle paar
-              Stunden mit deinen Suchanfragen. Eine gut gefüllte, wirklich
-              relevante Inbox wächst über die ersten 24–48 Stunden — Qualität
-              vor Masse.
+              Direkt nach dem Start läuft eine <b>erste Suche mit deinen
+              Suchanfragen</b> — die ersten eigenen Funde sind in etwa
+              30&nbsp;Minuten da. Ab dann sucht dein Radar automatisch alle paar
+              Stunden. Eine gut gefüllte, wirklich relevante Inbox wächst über
+              die ersten 24–48 Stunden — Qualität vor Masse.
             </p>
           </div>
 
