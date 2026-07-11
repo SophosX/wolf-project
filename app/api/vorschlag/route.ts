@@ -6,6 +6,7 @@
 // DELETE /api/vorschlag {zeit} — Vorschlag entfernen; seine Suchqueries stoppen sofort.
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { rufeGeminiJson } from "@/lib/gemini";
 import { setzeFolgen } from "@/lib/personen";
 import {
@@ -32,7 +33,8 @@ const THEMEN_SLUGS = [
 
 export async function GET() {
   try {
-    return NextResponse.json({ vorschlaege: await holeVorschlaege() });
+    const nutzer = await aktuellerNutzer();
+    return NextResponse.json({ vorschlaege: await holeVorschlaege(nutzer.userId) });
   } catch (e) {
     console.error("[api/vorschlag GET]", e);
     return NextResponse.json({ vorschlaege: [] });
@@ -41,6 +43,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const nutzer = await aktuellerNutzer();
     const { text } = (await req.json()) || {};
     const eingabe = String(text || "").trim();
     if (eingabe.length < 5) {
@@ -95,7 +98,7 @@ export async function POST(req: NextRequest) {
     ableitung.themen = (ableitung.themen || []).filter((t) => THEMEN_SLUGS.includes(t)).slice(0, 3);
 
     const vorschlag: Vorschlag = { text: eingabe, zeit: new Date().toISOString(), ableitung };
-    await speichereVorschlag(vorschlag);
+    await speichereVorschlag(nutzer.userId, vorschlag);
 
     // Kanäle auf die Beobachtungsliste (gleicher Weg wie das Personen-Dashboard)
     for (const kanal of ableitung.kanaele) {
@@ -103,7 +106,7 @@ export async function POST(req: NextRequest) {
       try {
         const handles: Record<string, string> = {};
         if (kanal.handle && kanal.plattform) handles[kanal.plattform] = kanal.handle.replace(/^@/, "");
-        await setzeFolgen(kanal.name, true, handles);
+        await setzeFolgen(nutzer.userId, kanal.name, true, handles);
       } catch (e) {
         console.error("[api/vorschlag] Watchlist-Update fehlgeschlagen:", e);
       }
@@ -125,7 +128,8 @@ export async function DELETE(req: NextRequest) {
     if (!zeit) {
       return NextResponse.json({ fehler: "zeit erforderlich" }, { status: 400 });
     }
-    const geloescht = await loescheVorschlag(String(zeit));
+    const nutzer = await aktuellerNutzer();
+    const geloescht = await loescheVorschlag(nutzer.userId, String(zeit));
     if (!geloescht) {
       return NextResponse.json({ fehler: "Vorschlag nicht gefunden" }, { status: 404 });
     }

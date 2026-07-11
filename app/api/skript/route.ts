@@ -1,6 +1,7 @@
 // POST /api/skript {video_id} → generiert Skript-Paket neu (Gemini mit Feedback-Kontext)
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { aktualisiereVideo, holeVideo } from "@/lib/daten";
 import { generiereSkripte } from "@/lib/gemini";
 
@@ -13,7 +14,8 @@ export async function POST(req: NextRequest) {
     if (!video_id) {
       return NextResponse.json({ fehler: "video_id erforderlich" }, { status: 400 });
     }
-    const video = await holeVideo(video_id);
+    const nutzer = await aktuellerNutzer();
+    const video = await holeVideo(nutzer.userId, video_id);
     if (!video) {
       return NextResponse.json({ fehler: "Video nicht gefunden: " + video_id }, { status: 404 });
     }
@@ -24,8 +26,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const skripte = await generiereSkripte(video);
-    await aktualisiereVideo(video_id, { skripte });
+    const skripte = await generiereSkripte(nutzer.userId, video);
+    await aktualisiereVideo(nutzer.userId, video_id, { skripte });
     return NextResponse.json({ ok: true, skripte });
   } catch (e) {
     console.error("[api/skript]", e);

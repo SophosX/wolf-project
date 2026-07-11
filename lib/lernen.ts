@@ -9,11 +9,12 @@ const SCHRITT = 0.15;
 const MAX_NOTIZEN = 15;
 
 export async function lernUpdate(
+  userId: string,
   video: Video,
   aktion: string,
   kommentar?: string
 ): Promise<void> {
-  const einstellungen = await holeEinstellungen();
+  const einstellungen = await holeEinstellungen(userId);
   const boost = einstellungen.gelernt.themen_boost;
   const slug = video.claim?.thema;
   const label = slug ? themaLabel(slug) : "unbekannt";
@@ -37,5 +38,5 @@ export async function lernUpdate(
     einstellungen.gelernt.notizen = [notiz, ...einstellungen.gelernt.notizen].slice(0, MAX_NOTIZEN);
   }
   einstellungen.zuletzt_gelernt = new Date().toISOString();
-  await speichereEinstellungen(einstellungen);
+  await speichereEinstellungen(userId, einstellungen);
 }

@@ -14,21 +14,21 @@ const WATCHLIST_PFAD = path.join(REPO, "scraper", "watchlist.json");
 type WatchlistDatei = { [k: string]: unknown; eintraege?: Record<string, unknown>[] };
 
 /** Watchlist laden: Supabase-Modus = DB (Quelle der Wahrheit, Datei nur Seed), sonst Datei. */
-async function ladeWatchlist(): Promise<WatchlistDatei> {
+async function ladeWatchlist(userId: string): Promise<WatchlistDatei> {
   const datei = await ladeJsonDatei<WatchlistDatei>(WATCHLIST_PFAD, {});
   if (datenModus() === "supabase") {
-    const db = await holeEinstellungsWert<WatchlistDatei | null>("watchlist", null);
+    const db = await holeEinstellungsWert<WatchlistDatei | null>(userId, "watchlist", null);
     if (db?.eintraege) return db;
     // DB noch leer → mit Datei-Seed initialisieren
-    if (datei.eintraege) await speichereEinstellungsWert("watchlist", datei);
+    if (datei.eintraege) await speichereEinstellungsWert(userId, "watchlist", datei);
     return datei;
   }
   return datei;
 }
 
-async function speichereWatchlist(wl: WatchlistDatei): Promise<void> {
+async function speichereWatchlist(userId: string, wl: WatchlistDatei): Promise<void> {
   if (datenModus() === "supabase") {
-    await speichereEinstellungsWert("watchlist", wl);
+    await speichereEinstellungsWert(userId, "watchlist", wl);
     return;
   }
   const tmp = WATCHLIST_PFAD + ".tmp";
@@ -80,9 +80,9 @@ function normalisiert(name: string): string {
   return name.split("(")[0].toLowerCase().replace(/[^a-zäöüß]/g, "");
 }
 
-export async function holePersonen(): Promise<PersonenDaten> {
+export async function holePersonen(userId: string): Promise<PersonenDaten> {
   const wb = await ladeJsonDatei<Record<string, unknown>>(WISSENSBASIS_PFAD, {});
-  const wl = await ladeWatchlist();
+  const wl = await ladeWatchlist(userId);
   const gefolgt = new Set(
     (wl.eintraege || []).map((e) => normalisiert(String(e.name || "")))
   );
@@ -143,11 +143,12 @@ export async function holePersonen(): Promise<PersonenDaten> {
 
 /** Folgen/Entfolgen = Person auf die Scraper-Watchlist setzen/entfernen. */
 export async function setzeFolgen(
+  userId: string,
   name: string,
   folgen: boolean,
   handles?: { youtube?: string | null; instagram?: string | null; tiktok?: string | null }
 ): Promise<void> {
-  const wl = await ladeWatchlist();
+  const wl = await ladeWatchlist(userId);
   const eintraege = (wl.eintraege || []) as Record<string, unknown>[];
   const ziel = normalisiert(name);
   const ohne = eintraege.filter((e) => normalisiert(String(e.name || "")) !== ziel);
@@ -162,5 +163,5 @@ export async function setzeFolgen(
     });
   }
   wl.eintraege = ohne;
-  await speichereWatchlist(wl);
+  await speichereWatchlist(userId, wl);
 }

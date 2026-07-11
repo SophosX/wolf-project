@@ -74,37 +74,37 @@ function schreibeDatei(daten: VorschlaegeDatei): void {
   fs.renameSync(tmp, DATEI);
 }
 
-export async function holeVorschlaege(): Promise<Vorschlag[]> {
+export async function holeVorschlaege(userId: string): Promise<Vorschlag[]> {
   if (datenModus() === "supabase") {
-    return (await holeEinstellungsWert<Vorschlag[]>("vorschlaege", [])) || [];
+    return (await holeEinstellungsWert<Vorschlag[]>(userId, "vorschlaege", [])) || [];
   }
   return liesDatei().vorschlaege;
 }
 
-export async function holeExtraQueries(): Promise<ExtraQuery[]> {
+export async function holeExtraQueries(userId: string): Promise<ExtraQuery[]> {
   const alle =
     datenModus() === "supabase"
-      ? (await holeEinstellungsWert<ExtraQuery[]>("extra_queries", [])) || []
+      ? (await holeEinstellungsWert<ExtraQuery[]>(userId, "extra_queries", [])) || []
       : liesDatei().extra_queries;
   const jetzt = new Date().toISOString();
   return alle.filter((q) => q.bis > jetzt);
 }
 
 /** Vorschlag + Ableitungen persistieren; wendet Themen-Boosts sofort an. */
-export async function speichereVorschlag(vorschlag: Vorschlag): Promise<void> {
+export async function speichereVorschlag(userId: string, vorschlag: Vorschlag): Promise<void> {
   const bis = new Date(Date.now() + QUERY_LAUFZEIT_TAGE * 86_400_000).toISOString();
   const neueQueries: ExtraQuery[] = (vorschlag.ableitung.queries || [])
     .map((q) => ({ query: q.trim(), bis }))
     .filter((q) => q.query.length > 3);
 
   if (datenModus() === "supabase") {
-    const vorschlaege = [vorschlag, ...(await holeVorschlaege())].slice(0, MAX_VORSCHLAEGE);
-    await speichereEinstellungsWert("vorschlaege", vorschlaege);
-    const aktiv = await holeExtraQueries();
+    const vorschlaege = [vorschlag, ...(await holeVorschlaege(userId))].slice(0, MAX_VORSCHLAEGE);
+    await speichereEinstellungsWert(userId, "vorschlaege", vorschlaege);
+    const aktiv = await holeExtraQueries(userId);
     const zusammen = [...neueQueries, ...aktiv]
       .filter((q, i, arr) => arr.findIndex((x) => x.query.toLowerCase() === q.query.toLowerCase()) === i)
       .slice(0, MAX_EXTRA_QUERIES);
-    await speichereEinstellungsWert("extra_queries", zusammen);
+    await speichereEinstellungsWert(userId, "extra_queries", zusammen);
   } else {
     const daten = liesDatei();
     daten.vorschlaege = [vorschlag, ...daten.vorschlaege].slice(0, MAX_VORSCHLAEGE);
@@ -116,14 +116,14 @@ export async function speichereVorschlag(vorschlag: Vorschlag): Promise<void> {
   }
 
   // Themen-Boosts sofort anwenden (gleicher Mechanismus wie Feedback-Lernen)
-  await wendeThemenBoostsAn(vorschlag);
+  await wendeThemenBoostsAn(userId, vorschlag);
 }
 
 /** Vorschlag entfernen — nimmt auch seine abgeleiteten Suchqueries sofort aus
  *  der Rotation. (Abgeleitete Kanäle bleiben auf der Beobachtungsliste — dort
  *  sichtbar und separat entfernbar.) */
-export async function loescheVorschlag(zeit: string): Promise<boolean> {
-  const alle = await holeVorschlaege();
+export async function loescheVorschlag(userId: string, zeit: string): Promise<boolean> {
+  const alle = await holeVorschlaege(userId);
   const ziel = alle.find((v) => v.zeit === zeit);
   if (!ziel) return false;
   const zielQueries = new Set(
@@ -132,11 +132,11 @@ export async function loescheVorschlag(zeit: string): Promise<boolean> {
   const rest = alle.filter((v) => v.zeit !== zeit);
 
   if (datenModus() === "supabase") {
-    await speichereEinstellungsWert("vorschlaege", rest);
+    await speichereEinstellungsWert(userId, "vorschlaege", rest);
     const queries = (
-      (await holeEinstellungsWert<ExtraQuery[]>("extra_queries", [])) || []
+      (await holeEinstellungsWert<ExtraQuery[]>(userId, "extra_queries", [])) || []
     ).filter((q) => !zielQueries.has(q.query.trim().toLowerCase()));
-    await speichereEinstellungsWert("extra_queries", queries);
+    await speichereEinstellungsWert(userId, "extra_queries", queries);
   } else {
     const daten = liesDatei();
     daten.vorschlaege = rest;
@@ -158,14 +158,14 @@ export function queryRestTage(vorschlag: Vorschlag): number {
 // Rezept-Vorschläge (Rezepte-Radar) — gleicher Mechanismus, eigene Schlüssel
 // ---------------------------------------------------------------------------
 
-export async function holeRezeptVorschlaege(): Promise<RezeptVorschlag[]> {
+export async function holeRezeptVorschlaege(userId: string): Promise<RezeptVorschlag[]> {
   if (datenModus() === "supabase") {
-    return (await holeEinstellungsWert<RezeptVorschlag[]>("rezept_vorschlaege", [])) || [];
+    return (await holeEinstellungsWert<RezeptVorschlag[]>(userId, "rezept_vorschlaege", [])) || [];
   }
   return liesDatei().rezept_vorschlaege || [];
 }
 
-export async function speichereRezeptVorschlag(vorschlag: RezeptVorschlag): Promise<void> {
+export async function speichereRezeptVorschlag(userId: string, vorschlag: RezeptVorschlag): Promise<void> {
   const bis = new Date(Date.now() + QUERY_LAUFZEIT_TAGE * 86_400_000).toISOString();
   const neueQueries: ExtraQuery[] = (vorschlag.queries || [])
     .map((q) => ({ query: q.trim(), bis }))
@@ -173,15 +173,15 @@ export async function speichereRezeptVorschlag(vorschlag: RezeptVorschlag): Prom
   const jetzt = new Date().toISOString();
 
   if (datenModus() === "supabase") {
-    const alle = [vorschlag, ...(await holeRezeptVorschlaege())].slice(0, MAX_VORSCHLAEGE);
-    await speichereEinstellungsWert("rezept_vorschlaege", alle);
+    const alle = [vorschlag, ...(await holeRezeptVorschlaege(userId))].slice(0, MAX_VORSCHLAEGE);
+    await speichereEinstellungsWert(userId, "rezept_vorschlaege", alle);
     const aktiv = (
-      (await holeEinstellungsWert<ExtraQuery[]>("rezept_extra_queries", [])) || []
+      (await holeEinstellungsWert<ExtraQuery[]>(userId, "rezept_extra_queries", [])) || []
     ).filter((q) => q.bis > jetzt);
     const zusammen = [...neueQueries, ...aktiv]
       .filter((q, i, arr) => arr.findIndex((x) => x.query.toLowerCase() === q.query.toLowerCase()) === i)
       .slice(0, MAX_EXTRA_QUERIES);
-    await speichereEinstellungsWert("rezept_extra_queries", zusammen);
+    await speichereEinstellungsWert(userId, "rezept_extra_queries", zusammen);
   } else {
     const daten = liesDatei();
     daten.rezept_vorschlaege = [vorschlag, ...(daten.rezept_vorschlaege || [])].slice(0, MAX_VORSCHLAEGE);
@@ -195,19 +195,19 @@ export async function speichereRezeptVorschlag(vorschlag: RezeptVorschlag): Prom
   }
 }
 
-export async function loescheRezeptVorschlag(zeit: string): Promise<boolean> {
-  const alle = await holeRezeptVorschlaege();
+export async function loescheRezeptVorschlag(userId: string, zeit: string): Promise<boolean> {
+  const alle = await holeRezeptVorschlaege(userId);
   const ziel = alle.find((v) => v.zeit === zeit);
   if (!ziel) return false;
   const zielQueries = new Set((ziel.queries || []).map((q) => q.trim().toLowerCase()));
   const rest = alle.filter((v) => v.zeit !== zeit);
 
   if (datenModus() === "supabase") {
-    await speichereEinstellungsWert("rezept_vorschlaege", rest);
+    await speichereEinstellungsWert(userId, "rezept_vorschlaege", rest);
     const queries = (
-      (await holeEinstellungsWert<ExtraQuery[]>("rezept_extra_queries", [])) || []
+      (await holeEinstellungsWert<ExtraQuery[]>(userId, "rezept_extra_queries", [])) || []
     ).filter((q) => !zielQueries.has(q.query.trim().toLowerCase()));
-    await speichereEinstellungsWert("rezept_extra_queries", queries);
+    await speichereEinstellungsWert(userId, "rezept_extra_queries", queries);
   } else {
     const daten = liesDatei();
     daten.rezept_vorschlaege = rest;
@@ -225,19 +225,19 @@ export function rezeptQueryRestTage(vorschlag: RezeptVorschlag): number {
   return Math.max(0, Math.ceil((bis - Date.now()) / 86_400_000));
 }
 
-async function wendeThemenBoostsAn(vorschlag: Vorschlag): Promise<void> {
+async function wendeThemenBoostsAn(userId: string, vorschlag: Vorschlag): Promise<void> {
   const themen = vorschlag.ableitung.themen || [];
   if (themen.length > 0) {
-    const einstellungen = await holeEinstellungen();
+    const einstellungen = await holeEinstellungen(userId);
     for (const slug of themen) {
       const alt = einstellungen.gelernt.themen_boost[slug] || 0;
       einstellungen.gelernt.themen_boost[slug] = Math.min(1, Math.round((alt + 0.2) * 100) / 100);
     }
     einstellungen.gelernt.notizen = [
-      "Vorschlag von Chris: „" + vorschlag.text.slice(0, 80) + "“ → " + vorschlag.ableitung.notiz,
+      "Dein Vorschlag: „" + vorschlag.text.slice(0, 80) + "“ → " + vorschlag.ableitung.notiz,
       ...einstellungen.gelernt.notizen,
     ].slice(0, 15);
     einstellungen.zuletzt_gelernt = new Date().toISOString();
-    await speichereEinstellungen(einstellungen);
+    await speichereEinstellungen(userId, einstellungen);
   }
 }

@@ -127,7 +127,7 @@ function videoKontext(video: Video): string {
   return teile.join("\n");
 }
 
-async function feedbackKontext(video: Video): Promise<string> {
+async function feedbackKontext(userId: string, video: Video): Promise<string> {
   const teile: string[] = [];
   const eigene = (video.feedback || []).filter((f) => f.kommentar);
   if (eigene.length > 0) {
@@ -139,13 +139,13 @@ async function feedbackKontext(video: Video): Promise<string> {
   // Adaptives System: was Chris global und zu diesem THEMA früher gesagt hat
   try {
     const { holeEinstellungen, holeVideos } = await import("./daten");
-    const notizen = (await holeEinstellungen()).gelernt.notizen.slice(0, 5);
+    const notizen = (await holeEinstellungen(userId)).gelernt.notizen.slice(0, 5);
     if (notizen.length > 0) {
       teile.push("GELERNTES FEEDBACK VON CHRIS (beachten!):\n- " + notizen.join("\n- "));
     }
     const thema = video.claim?.thema;
     if (thema) {
-      const verwandt = (await holeVideos())
+      const verwandt = (await holeVideos(userId))
         .filter((v) => v.id !== video.id && v.claim?.thema === thema)
         .flatMap((v) =>
           (v.feedback || [])
@@ -166,7 +166,7 @@ async function feedbackKontext(video: Video): Promise<string> {
 const SKRIPT_TRENNER = /===\s*VARIANTE\s*(\d)\s*\|\s*([a-z_]+)\s*===/gi;
 
 /** Generiert 3 Skript-Varianten (mit Grounding für echte Quellen). */
-export async function generiereSkripte(video: Video): Promise<Skript[]> {
+export async function generiereSkripte(userId: string, video: Video): Promise<Skript[]> {
   const wissen = ladeWissen();
   // Narrativ-RAG: Chris' echte Formulierungen zum Thema in den Prompt
   const oTon = await chrisOTonBlock(video.claim?.aussage || video.titel, 3).catch(() => "");
@@ -186,7 +186,7 @@ export async function generiereSkripte(video: Video): Promise<Skript[]> {
     "",
     "DAS ZIEL-VIDEO:",
     videoKontext(video),
-    await feedbackKontext(video),
+    await feedbackKontext(userId, video),
     oTon ? "\n" + oTon : "",
     "",
     "Suche aktuelle, seriöse Belege (Metaanalysen, EFSA, DGE, BfR) für die Widerlegung und baue konkrete Zahlen ein (nachrechenbar, Dreisatz-tauglich).",

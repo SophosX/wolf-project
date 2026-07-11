@@ -41,10 +41,10 @@ export function starteNachschub(quellen = "youtube,tiktok"): boolean {
 }
 
 /** Nach Feedback-Aktionen: Inbox dünn? → Nachschub anstoßen (best effort). */
-export async function nachschubBeiBedarf(): Promise<void> {
+export async function nachschubBeiBedarf(userId: string): Promise<void> {
   if (!nachschubMoeglich() || nachschubLaeuft()) return;
   try {
-    const inbox = await holeVideos({ status: "inbox" });
+    const inbox = await holeVideos(userId, { status: "inbox" });
     if (inbox.length < INBOX_SCHWELLE) starteNachschub();
   } catch {
     /* best effort — nie den Feedback-Flow blockieren */

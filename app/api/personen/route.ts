@@ -2,13 +2,15 @@
 // POST /api/personen {name, folgen: boolean, handles?} → Watchlist aktualisieren
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { holePersonen, setzeFolgen } from "@/lib/personen";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return NextResponse.json(await holePersonen());
+    const nutzer = await aktuellerNutzer();
+    return NextResponse.json(await holePersonen(nutzer.userId));
   } catch (e) {
     console.error("[api/personen]", e);
     return NextResponse.json(
@@ -25,7 +27,8 @@ export async function POST(req: NextRequest) {
     if (!name) {
       return NextResponse.json({ fehler: "name fehlt" }, { status: 400 });
     }
-    await setzeFolgen(name, Boolean(body.folgen), body.handles);
+    const nutzer = await aktuellerNutzer();
+    await setzeFolgen(nutzer.userId, name, Boolean(body.folgen), body.handles);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[api/personen]", e);

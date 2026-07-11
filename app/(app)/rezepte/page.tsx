@@ -2,6 +2,7 @@
 // Score (0.5*Community-Resonanz + 0.5*Chris-Fit). Aktionen: Merken / Verwerfen /
 // Kommentar (der Algorithmus lernt daraus). Gemerkte eingeklappt darunter.
 
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeRezepte } from "@/lib/daten";
 import RezeptListe from "@/components/RezeptListe";
 import RezeptVorschlagBox from "@/components/RezeptVorschlagBox";
@@ -26,13 +27,14 @@ export default async function RezepteSeite(props: {
 
   try {
     // Kategorie-Auswahl aus allen Vorschlägen (unabhängig vom Filter)
-    const basis = await holeRezepte({ status: "vorschlag" });
+    const nutzer = await aktuellerNutzer();
+    const basis = await holeRezepte(nutzer.userId, { status: "vorschlag" });
     kategorien = [...new Set(basis.map((r) => r.kategorie).filter(Boolean))];
 
     vorschlaege = kategorie
       ? basis.filter((r) => r.kategorie === kategorie)
       : basis;
-    gemerkte = await holeRezepte({ status: "gemerkt" });
+    gemerkte = await holeRezepte(nutzer.userId, { status: "gemerkt" });
   } catch (e) {
     console.error("[RezepteSeite]", e);
     ladefehler = e instanceof Error ? e.message : "Rezepte konnten nicht geladen werden";

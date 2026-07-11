@@ -6,6 +6,7 @@
 // DELETE /api/rezepte/vorschlag {zeit} — Vorschlag entfernen, Suche stoppt sofort.
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { rufeGeminiJson } from "@/lib/gemini";
 import {
   holeRezeptVorschlaege,
@@ -19,7 +20,8 @@ export const maxDuration = 60;
 
 export async function GET() {
   try {
-    return NextResponse.json({ vorschlaege: await holeRezeptVorschlaege() });
+    const nutzer = await aktuellerNutzer();
+    return NextResponse.json({ vorschlaege: await holeRezeptVorschlaege(nutzer.userId) });
   } catch (e) {
     console.error("[api/rezepte/vorschlag GET]", e);
     return NextResponse.json({ vorschlaege: [] });
@@ -66,7 +68,8 @@ export async function POST(req: NextRequest) {
       zeit: new Date().toISOString(),
       queries,
     };
-    await speichereRezeptVorschlag(vorschlag);
+    const nutzer = await aktuellerNutzer();
+    await speichereRezeptVorschlag(nutzer.userId, vorschlag);
     return NextResponse.json({ ok: true, vorschlag });
   } catch (e) {
     console.error("[api/rezepte/vorschlag POST]", e);
@@ -83,7 +86,8 @@ export async function DELETE(req: NextRequest) {
     if (!zeit) {
       return NextResponse.json({ fehler: "zeit erforderlich" }, { status: 400 });
     }
-    const geloescht = await loescheRezeptVorschlag(String(zeit));
+    const nutzer = await aktuellerNutzer();
+    const geloescht = await loescheRezeptVorschlag(nutzer.userId, String(zeit));
     if (!geloescht) {
       return NextResponse.json({ fehler: "Vorschlag nicht gefunden" }, { status: 404 });
     }

@@ -2,6 +2,13 @@
 // DATEN_MODUS=lokal  → liest/schreibt daten/*.json über fs (nur serverseitig)
 // DATEN_MODUS=supabase → @supabase/supabase-js mit SERVICE_KEY (nur Server!)
 // Default: lokal, wenn SUPABASE_URL fehlt.
+//
+// Multi-Tenant (Phase 1): Jede nutzerbezogene Funktion nimmt `userId` als
+// ersten Parameter. Supabase-Modus: Videos leben als geteilter POOL (Tabelle
+// `videos`, mandantenneutral), alles Nutzerspezifische (Status, Score, Verdict,
+// Skripte, Feedback) in `video_zuordnung` — beim Lesen werden beide zur
+// bisherigen Video-Form zusammengefügt, die UI bleibt unverändert.
+// Lokal-Modus: `userId` wird ignoriert (Single-User-Fallback, flache JSONs).
 
 import fs from "fs";
 import fsp from "fs/promises";
@@ -10,6 +17,7 @@ import { istAktuell } from "./format";
 import type {
   AgentRun,
   AgentStatus,
+  Claim,
   Einstellungen,
   Rezept,
   RezeptFilter,
@@ -127,6 +135,60 @@ async function supabase() {
   return supabaseClient;
 }
 
+/** Felder, die im Supabase-Modus in video_zuordnung leben (per User). */
+const ZUORDNUNG_FELDER = new Set([
+  "status",
+  "score",
+  "scores",
+  "verdict",
+  "thema_slug",
+  "begruendung",
+  "skripte",
+  "feedback",
+  "dublette_von",
+]);
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * video_zuordnung-Zeile (+ eingebettetes Pool-Video) → bisherige Video-Form.
+ * Der neutrale Pool-Claim (aussage/kategorie) und das per-User-Verdict werden
+ * zur gewohnten `claim`-Struktur zusammengefügt — UI-Kontrakt bleibt stabil.
+ */
+function zuordnungZuVideo(z: any): Video {
+  const v = z.video || {};
+  const poolClaim = v.claim || null;
+  const verdict = z.verdict || null;
+  const webcheck = v.webcheck || null;
+  const claim: Claim | null =
+    poolClaim || verdict
+      ? {
+          aussage: poolClaim?.aussage || verdict?.aussage || "",
+          verdict: verdict?.verdict || poolClaim?.verdict || "strittig",
+          konfidenz: verdict?.konfidenz ?? poolClaim?.konfidenz ?? 0,
+          begruendung: verdict?.begruendung || poolClaim?.begruendung || "",
+          thema: z.thema_slug || poolClaim?.thema || "",
+          websuche: webcheck?.websuche ?? poolClaim?.websuche ?? null,
+          quellen: webcheck?.quellen || poolClaim?.quellen || [],
+        }
+      : null;
+  return {
+    ...v,
+    status: z.status,
+    score: z.score || 0,
+    scores: z.scores || { reichweite: 0, relevanz: 0, tauglichkeit: 0 },
+    dublette_von: z.dublette_von || undefined,
+    skripte: z.skripte || [],
+    feedback: z.feedback || [],
+    claim,
+  } as Video;
+}
+
+/** Supabase-Rezept-Zeile → bisherige Rezept-Form (haken ↔ chris_haken). */
+function zeileZuRezept(r: any): Rezept {
+  return { ...r, chris_haken: r.chris_haken ?? r.haken ?? "" } as Rezept;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 // ---------------------------------------------------------------------------
 // Öffentliche Schnittstelle (Kontrakt)
 // ---------------------------------------------------------------------------
@@ -147,20 +209,21 @@ function filterAnwenden(videos: Video[], filter?: VideoFilter): Video[] {
 }
 
 /**
- * Dynamisches Ranking: Chris' Feedback (themen_boost aus Annehmen/Ablehnen/Vorschlägen)
- * verschiebt die Reihenfolge SOFORT — ±25 Punkte bei vollem Boost. Der gespeicherte
- * Score bleibt unangetastet (nachvollziehbar), nur die Sortierung reagiert live.
+ * Dynamisches Ranking: das Feedback DES NUTZERS (themen_boost aus
+ * Annehmen/Ablehnen/Vorschlägen) verschiebt die Reihenfolge SOFORT —
+ * ±25 Punkte bei vollem Boost. Der gespeicherte Score bleibt unangetastet
+ * (nachvollziehbar), nur die Sortierung reagiert live.
  */
-async function feedbackSortierung(videos: Video[]): Promise<Video[]> {
+async function feedbackSortierung(userId: string, videos: Video[]): Promise<Video[]> {
   let boost: Record<string, number> = {};
   try {
-    boost = (await holeEinstellungen()).gelernt.themen_boost || {};
+    boost = (await holeEinstellungen(userId)).gelernt.themen_boost || {};
   } catch {
     boost = {}; // ohne Einstellungen: kein Boost, aber Frische-Sortierung greift weiter
   }
   const dyn = (v: Video) =>
     (v.score || 0) + Math.round(25 * (boost[v.claim?.thema || ""] || 0));
-  // Aktuelle Videos IMMER zuerst (Christian braucht Frisches), innerhalb jeder
+  // Aktuelle Videos IMMER zuerst (Creator brauchen Frisches), innerhalb jeder
   // Frische-Gruppe nach dynamischem Score. Sonst versinken neue, noch view-arme
   // Videos unter alten Reichweiten-Klassikern.
   return [...videos].sort((a, b) => {
@@ -171,46 +234,60 @@ async function feedbackSortierung(videos: Video[]): Promise<Video[]> {
   });
 }
 
-export async function holeVideos(filter?: VideoFilter): Promise<Video[]> {
+export async function holeVideos(userId: string, filter?: VideoFilter): Promise<Video[]> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
-    let q = sb.from("videos").select("*").order("score", { ascending: false });
+    let q = sb
+      .from("video_zuordnung")
+      .select("*, video:videos(*)")
+      .eq("user_id", userId)
+      .order("score", { ascending: false });
     if (filter?.status) {
       const stati = Array.isArray(filter.status) ? filter.status : [filter.status];
       q = q.in("status", stati);
     }
-    if (filter?.plattform) q = q.eq("plattform", filter.plattform);
-    if (filter?.thema) q = q.eq("claim->>thema", filter.thema);
-    if (filter?.zeitraumTage) {
-      const grenze = new Date(Date.now() - filter.zeitraumTage * 86_400_000).toISOString();
-      q = q.gte("veroeffentlicht", grenze);
-    }
     const { data, error } = await q;
-    if (error) throw new Error("Supabase-Fehler (videos): " + error.message);
-    return feedbackSortierung((data || []) as Video[]);
+    if (error) throw new Error("Supabase-Fehler (video_zuordnung): " + error.message);
+    // Plattform/Thema/Zeitraum nach dem Zusammenfügen filtern (kleine Mengen,
+    // erspart fragile PostgREST-Filter über die eingebettete Tabelle).
+    const videos = filterAnwenden(
+      (data || []).map(zuordnungZuVideo),
+      { ...filter, status: undefined }
+    );
+    return feedbackSortierung(userId, videos);
   }
-  return feedbackSortierung(filterAnwenden(liesJson<Video[]>("videos.json", []), filter));
+  return feedbackSortierung(userId, filterAnwenden(liesJson<Video[]>("videos.json", []), filter));
 }
 
-export async function holeVideo(id: string): Promise<Video | null> {
-  const videos = await holeVideos();
+export async function holeVideo(userId: string, id: string): Promise<Video | null> {
+  const videos = await holeVideos(userId);
   return videos.find((v) => v.id === id) || null;
 }
 
 export async function aktualisiereVideo(
+  userId: string,
   id: string,
   patch: Partial<Video>
 ): Promise<Video> {
   if (datenModus() === "supabase") {
+    const zuordnungPatch: Record<string, unknown> = {};
+    for (const [k, wert] of Object.entries(patch)) {
+      if (!ZUORDNUNG_FELDER.has(k)) {
+        throw new Error("aktualisiereVideo: Feld '" + k + "' ist nicht nutzerbezogen (Pool-Feld?)");
+      }
+      zuordnungPatch[k] = wert;
+    }
+    zuordnungPatch.aktualisiert_am = new Date().toISOString();
     const sb = await supabase();
     const { data, error } = await sb
-      .from("videos")
-      .update(patch)
-      .eq("id", id)
-      .select()
+      .from("video_zuordnung")
+      .update(zuordnungPatch)
+      .eq("user_id", userId)
+      .eq("video_id", id)
+      .select("*, video:videos(*)")
       .single();
-    if (error) throw new Error("Supabase-Fehler (update): " + error.message);
-    return data as Video;
+    if (error) throw new Error("Supabase-Fehler (zuordnung update): " + error.message);
+    return zuordnungZuVideo(data);
   }
   return mitLock(async () => {
     const videos = await materialisiereVideos();
@@ -222,14 +299,17 @@ export async function aktualisiereVideo(
   });
 }
 
-export async function holeAgentRuns(): Promise<AgentRun[]> {
+/** Läufe des Nutzers + globale Akquise-Läufe (user_id null). */
+export async function holeAgentRuns(userId?: string): Promise<AgentRun[]> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
-    const { data, error } = await sb
+    let q = sb
       .from("agent_runs")
       .select("*")
       .order("zeit", { ascending: false })
       .limit(100);
+    if (userId) q = q.or("user_id.is.null,user_id.eq." + userId);
+    const { data, error } = await q;
     if (error) throw new Error("Supabase-Fehler (agent_runs): " + error.message);
     return (data || []) as AgentRun[];
   }
@@ -240,7 +320,9 @@ export async function holeAgentRuns(): Promise<AgentRun[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Live-Status + "Jetzt suchen" (nur Lokal-Modus — Status/Flag leben im Volume)
+// Live-Status + "Jetzt suchen"
+// Lokal: Status/Flag leben im Volume. Supabase: Auftrags-Queue (Tabelle
+// auftraege) — ein Minuten-Worker im Scraper-Container claimt offene Aufträge.
 // ---------------------------------------------------------------------------
 
 const LAUF_ANFRAGE_PFAD = path.join(DATEN_DIR, ".lauf_anfrage");
@@ -262,12 +344,31 @@ export async function holeAgentStatus(): Promise<AgentStatus | null> {
 }
 
 /** Ist ein "Jetzt suchen" angefordert, aber noch nicht gestartet? */
-export async function laufAngefragt(): Promise<boolean> {
+export async function laufAngefragt(userId: string): Promise<boolean> {
+  if (datenModus() === "supabase") {
+    const sb = await supabase();
+    const { count, error } = await sb
+      .from("auftraege")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("typ", "lauf")
+      .in("status", ["offen", "laeuft"]);
+    if (error) throw new Error("Supabase-Fehler (auftraege): " + error.message);
+    return (count || 0) > 0;
+  }
   return fs.existsSync(LAUF_ANFRAGE_PFAD);
 }
 
-/** "Jetzt suchen": Flag-Datei anlegen — der Scraper-Cron prüft sie minütlich. */
-export async function fordereLaufAn(): Promise<void> {
+/** "Jetzt suchen": Lokal Flag-Datei (Minuten-Cron), Supabase Auftrags-Queue. */
+export async function fordereLaufAn(userId: string): Promise<void> {
+  if (datenModus() === "supabase") {
+    const sb = await supabase();
+    const { error } = await sb
+      .from("auftraege")
+      .insert({ user_id: userId, typ: "lauf" });
+    if (error) throw new Error("Supabase-Fehler (auftrag insert): " + error.message);
+    return;
+  }
   await fsp.writeFile(
     LAUF_ANFRAGE_PFAD,
     JSON.stringify({ angefragt: new Date().toISOString() })
@@ -279,12 +380,13 @@ const LEERE_EINSTELLUNGEN: Einstellungen = {
   zuletzt_gelernt: null,
 };
 
-export async function holeEinstellungen(): Promise<Einstellungen> {
+export async function holeEinstellungen(userId: string): Promise<Einstellungen> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
     const { data, error } = await sb
       .from("einstellungen")
       .select("value")
+      .eq("user_id", userId)
       .eq("key", "einstellungen")
       .maybeSingle();
     if (error) throw new Error("Supabase-Fehler (einstellungen): " + error.message);
@@ -303,12 +405,17 @@ export async function holeEinstellungen(): Promise<Einstellungen> {
 }
 
 /** Generischer Einstellungs-Wert (z.B. key "watchlist") — Supabase: einstellungen-Tabelle. */
-export async function holeEinstellungsWert<T>(key: string, fallback: T): Promise<T | null> {
+export async function holeEinstellungsWert<T>(
+  userId: string,
+  key: string,
+  fallback: T
+): Promise<T | null> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
     const { data, error } = await sb
       .from("einstellungen")
       .select("value")
+      .eq("user_id", userId)
       .eq("key", key)
       .maybeSingle();
     if (error) throw new Error("Supabase-Fehler (" + key + "): " + error.message);
@@ -317,30 +424,35 @@ export async function holeEinstellungsWert<T>(key: string, fallback: T): Promise
   return fallback; // Lokal-Modus: Aufrufer nutzt seine Datei-Quelle
 }
 
-export async function speichereEinstellungsWert(key: string, value: unknown): Promise<void> {
+export async function speichereEinstellungsWert(
+  userId: string,
+  key: string,
+  value: unknown
+): Promise<void> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
-    const { error } = await sb.from("einstellungen").upsert({ key, value });
+    const { error } = await sb
+      .from("einstellungen")
+      .upsert(
+        { user_id: userId, key, value, aktualisiert_am: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
     if (error) throw new Error("Supabase-Fehler (" + key + " upsert): " + error.message);
     return;
   }
   throw new Error("speichereEinstellungsWert ist nur im Supabase-Modus verfügbar");
 }
 
-export async function speichereEinstellungen(e: Einstellungen): Promise<void> {
+export async function speichereEinstellungen(userId: string, e: Einstellungen): Promise<void> {
   if (datenModus() === "supabase") {
-    const sb = await supabase();
-    const { error } = await sb
-      .from("einstellungen")
-      .upsert({ key: "einstellungen", value: e });
-    if (error) throw new Error("Supabase-Fehler (einstellungen upsert): " + error.message);
+    await speichereEinstellungsWert(userId, "einstellungen", e);
     return;
   }
   await mitLock(() => schreibeJson("einstellungen.json", e));
 }
 
 // ---------------------------------------------------------------------------
-// Rezepte-Radar (daten/rezepte.json — geschrieben vom scraper/rezepte_agent.py)
+// Rezepte-Radar (lokal: daten/rezepte.json — geschrieben vom scraper/rezepte_agent.py)
 // ---------------------------------------------------------------------------
 
 function rezeptFilterAnwenden(rezepte: Rezept[], filter?: RezeptFilter): Rezept[] {
@@ -353,10 +465,14 @@ function rezeptFilterAnwenden(rezepte: Rezept[], filter?: RezeptFilter): Rezept[
   return [...liste].sort((a, b) => (b.score || 0) - (a.score || 0));
 }
 
-export async function holeRezepte(filter?: RezeptFilter): Promise<Rezept[]> {
+export async function holeRezepte(userId: string, filter?: RezeptFilter): Promise<Rezept[]> {
   if (datenModus() === "supabase") {
     const sb = await supabase();
-    let q = sb.from("rezepte").select("*").order("score", { ascending: false });
+    let q = sb
+      .from("rezepte")
+      .select("*")
+      .eq("user_id", userId)
+      .order("score", { ascending: false });
     if (filter?.status) {
       const stati = Array.isArray(filter.status) ? filter.status : [filter.status];
       q = q.in("status", stati);
@@ -364,17 +480,18 @@ export async function holeRezepte(filter?: RezeptFilter): Promise<Rezept[]> {
     if (filter?.kategorie) q = q.eq("kategorie", filter.kategorie);
     const { data, error } = await q;
     if (error) throw new Error("Supabase-Fehler (rezepte): " + error.message);
-    return (data || []) as Rezept[];
+    return (data || []).map(zeileZuRezept);
   }
   return rezeptFilterAnwenden(liesJson<Rezept[]>("rezepte.json", []), filter);
 }
 
-export async function holeRezept(id: string): Promise<Rezept | null> {
-  const rezepte = await holeRezepte();
+export async function holeRezept(userId: string, id: string): Promise<Rezept | null> {
+  const rezepte = await holeRezepte(userId);
   return rezepte.find((r) => r.id === id) || null;
 }
 
 export async function aktualisiereRezept(
+  userId: string,
   id: string,
   patch: Partial<Rezept>
 ): Promise<Rezept> {
@@ -383,11 +500,12 @@ export async function aktualisiereRezept(
     const { data, error } = await sb
       .from("rezepte")
       .update(patch)
+      .eq("user_id", userId)
       .eq("id", id)
       .select()
       .single();
     if (error) throw new Error("Supabase-Fehler (rezept update): " + error.message);
-    return data as Rezept;
+    return zeileZuRezept(data);
   }
   return mitLock(async () => {
     const rezepte = liesJson<Rezept[]>("rezepte.json", []);
@@ -400,14 +518,14 @@ export async function aktualisiereRezept(
 }
 
 /** Anzahl offener Rezept-Vorschläge (für den Kopfleisten-Tab). */
-export async function zaehleRezeptVorschlaege(): Promise<number> {
-  const rezepte = await holeRezepte({ status: "vorschlag" });
+export async function zaehleRezeptVorschlaege(userId: string): Promise<number> {
+  const rezepte = await holeRezepte(userId, { status: "vorschlag" });
   return rezepte.length;
 }
 
 /** Zähler je Status für die Kopfleisten-Tabs. */
-export async function zaehleStatus(): Promise<Record<Status, number>> {
-  const videos = await holeVideos();
+export async function zaehleStatus(userId: string): Promise<Record<Status, number>> {
+  const videos = await holeVideos(userId);
   const zaehler: Record<Status, number> = {
     inbox: 0,
     angenommen: 0,

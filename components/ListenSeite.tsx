@@ -1,6 +1,7 @@
 // Gemeinsame Server-Komponente für alle Karten-Seiten:
 // Filter lesen → Videos laden → Watchlist-Flag anreichern → Liste rendern
 
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeVideos } from "@/lib/daten";
 import { istAufWatchlist } from "@/lib/watchlist";
 import type { Plattform, Status } from "@/lib/typen";
@@ -38,11 +39,12 @@ export default async function ListenSeite({
   let ladefehler: string | null = null;
 
   try {
+    const nutzer = await aktuellerNutzer();
     // Themen-Auswahl aus allen Videos dieses Status (unabhängig vom Thema-Filter)
-    const basis = await holeVideos({ status });
+    const basis = await holeVideos(nutzer.userId, { status });
     themen = [...new Set(basis.map((v) => v.claim?.thema).filter(Boolean))] as string[];
 
-    const gefiltert = await holeVideos({
+    const gefiltert = await holeVideos(nutzer.userId, {
       status,
       plattform: plattform || undefined,
       thema: thema || undefined,

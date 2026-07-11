@@ -2,6 +2,7 @@
 // (Gemini + google_search-Grounding) → {inhalt_md, quellen}
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeVideo } from "@/lib/daten";
 import { faktencheck } from "@/lib/gemini";
 
@@ -15,7 +16,8 @@ export async function POST(req: NextRequest) {
     if (!video_id) {
       return NextResponse.json({ fehler: "video_id erforderlich" }, { status: 400 });
     }
-    const video = await holeVideo(video_id);
+    const nutzer = await aktuellerNutzer();
+    const video = await holeVideo(nutzer.userId, video_id);
     if (!video) {
       return NextResponse.json({ fehler: "Video nicht gefunden: " + video_id }, { status: 404 });
     }

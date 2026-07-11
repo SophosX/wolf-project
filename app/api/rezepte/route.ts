@@ -5,6 +5,7 @@
 //     (Muster: /api/feedback + lib/lernen.ts)
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import {
   aktualisiereRezept,
   holeEinstellungen,
@@ -31,7 +32,8 @@ export async function GET(req: NextRequest) {
     const p = req.nextUrl.searchParams;
     const status = (p.get("status") || undefined) as RezeptStatus | undefined;
     const kategorie = p.get("kategorie") || undefined;
-    const rezepte = await holeRezepte({ status, kategorie });
+    const nutzer = await aktuellerNutzer();
+    const rezepte = await holeRezepte(nutzer.userId, { status, kategorie });
     return NextResponse.json({ rezepte });
   } catch (e) {
     console.error("[api/rezepte GET]", e);
@@ -43,8 +45,8 @@ export async function GET(req: NextRequest) {
 }
 
 /** Kommentar in einstellungen.gelernt.rezept_notizen anhängen (simple Liste). */
-async function merkeRezeptNotiz(rezept: Rezept, aktion: string, kommentar: string) {
-  const einstellungen = await holeEinstellungen();
+async function merkeRezeptNotiz(userId: string, rezept: Rezept, aktion: string, kommentar: string) {
+  const einstellungen = await holeEinstellungen(userId);
   const notiz =
     "[" + aktion + "] „" + rezept.titel.slice(0, 60) + "“: „" + kommentar + "“";
   einstellungen.gelernt.rezept_notizen = [
@@ -52,11 +54,12 @@ async function merkeRezeptNotiz(rezept: Rezept, aktion: string, kommentar: strin
     ...(einstellungen.gelernt.rezept_notizen || []),
   ].slice(0, MAX_REZEPT_NOTIZEN);
   einstellungen.zuletzt_gelernt = new Date().toISOString();
-  await speichereEinstellungen(einstellungen);
+  await speichereEinstellungen(userId, einstellungen);
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const nutzer = await aktuellerNutzer();
     const body = await req.json();
     const { rezept_id, aktion, kommentar } = body || {};
 
@@ -67,7 +70,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rezept = await holeRezept(rezept_id);
+    const rezept = await holeRezept(nutzer.userId, rezept_id);
     if (!rezept) {
       return NextResponse.json(
         { fehler: "Rezept nicht gefunden: " + rezept_id },
@@ -87,12 +90,12 @@ export async function POST(req: NextRequest) {
     };
     if (neuerStatus) patch.status = neuerStatus;
 
-    const aktualisiert = await aktualisiereRezept(rezept_id, patch);
+    const aktualisiert = await aktualisiereRezept(nutzer.userId, rezept_id, patch);
 
     // Lern-Update (Fehler hier nicht fatal, aber sichtbar loggen)
     if (kommentar) {
       try {
-        await merkeRezeptNotiz(rezept, aktion, String(kommentar).slice(0, 500));
+        await merkeRezeptNotiz(nutzer.userId, rezept, aktion, String(kommentar).slice(0, 500));
       } catch (e) {
         console.error("[api/rezepte] Rezept-Notiz fehlgeschlagen:", e);
       }

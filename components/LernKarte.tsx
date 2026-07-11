@@ -1,5 +1,6 @@
 // Lern-Karte (Server-Komponente): "Was der Radar aus deinem Feedback gelernt hat"
 
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeEinstellungen } from "@/lib/daten";
 import { relativeZeit } from "@/lib/format";
 import { themaLabel } from "@/lib/typen";
@@ -9,7 +10,8 @@ export default async function LernKarte() {
   let boosts: [string, number][] = [];
   let zuletzt: string | null = null;
   try {
-    const e = await holeEinstellungen();
+    const nutzer = await aktuellerNutzer();
+    const e = await holeEinstellungen(nutzer.userId);
     notizen = e.gelernt.notizen || [];
     boosts = Object.entries(e.gelernt.themen_boost || {}).filter(
       ([, wert]) => Math.abs(wert) >= 0.05

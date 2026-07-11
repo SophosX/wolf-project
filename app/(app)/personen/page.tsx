@@ -2,12 +2,14 @@
 // "Folgen" setzt die Person auf die Scraper-Watchlist (wird ab dem nächsten Lauf überwacht).
 
 import PersonenDashboard from "@/components/PersonenDashboard";
+import { aktuellerNutzer } from "@/lib/auth";
 import { holePersonen } from "@/lib/personen";
 
 export const dynamic = "force-dynamic";
 
 export default async function PersonenSeite() {
-  const daten = await holePersonen();
+  const nutzer = await aktuellerNutzer();
+  const daten = await holePersonen(nutzer.userId);
   return (
     <>
       <div className="banner">

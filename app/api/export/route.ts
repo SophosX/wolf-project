@@ -2,6 +2,7 @@
 // Markdown: komplette Skript-Pakete · CSV: Tabellen-Export (Semikolon, Excel-DE)
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeVideos } from "@/lib/daten";
 import { formatDatum } from "@/lib/format";
 import { hookLabel, themaLabel } from "@/lib/typen";
@@ -76,7 +77,8 @@ export async function GET(req: NextRequest) {
     const status = (p.get("status") || "angenommen") as Status;
     const format = p.get("format") === "csv" ? "csv" : "md";
 
-    const videos = await holeVideos({ status });
+    const nutzer = await aktuellerNutzer();
+    const videos = await holeVideos(nutzer.userId, { status });
     const datum = new Date().toISOString().slice(0, 10);
 
     if (format === "csv") {

@@ -244,16 +244,20 @@ def aktualisiere_analyse(videos):
     return n
 
 
-def lade_einstellungen():
+def lade_einstellungen(user_id=None):
+    """Einstellungen des Nutzers. Lokal: einstellungen.json (user_id ignoriert).
+    Supabase (v2): einstellungen-Tabelle mit PK (user_id, key) — die App
+    speichert das komplette Objekt unter key 'einstellungen'."""
     fallback = {"gelernt": {"themen_boost": {}, "notizen": []}, "zuletzt_gelernt": None}
     if daten_modus() == "supabase":
-        zeilen = _supabase_get("einstellungen", {"select": "key,value"})
-        if zeilen is None:
-            return fallback
-        for zeile in zeilen:
-            if zeile.get("key") == "gelernt":
-                return {"gelernt": zeile.get("value") or fallback["gelernt"],
-                        "zuletzt_gelernt": None}
+        params = {"select": "key,value", "key": "eq.einstellungen"}
+        if user_id:
+            params["user_id"] = "eq." + str(user_id)
+        zeilen = _supabase_get("einstellungen", params)
+        if zeilen:
+            wert = zeilen[0].get("value") or {}
+            return {"gelernt": wert.get("gelernt") or fallback["gelernt"],
+                    "zuletzt_gelernt": wert.get("zuletzt_gelernt")}
         return fallback
     return _lade_json(EINSTELLUNGEN_DATEI, fallback)
 
@@ -363,12 +367,16 @@ def markiere_dubletten(schwelle=0.85):
 
 
 def speichere_agent_run(protokoll):
-    """Ein agent_run-Protokoll anhaengen: {zeit, quelle, gefunden, neu, analysiert, geflaggt, fehler, dauer_s}"""
+    """Ein agent_run-Protokoll anhaengen: {zeit, quelle, gefunden, neu, analysiert,
+    geflaggt, fehler, dauer_s} — optional user_id (null = globaler Akquise-Lauf),
+    typ (akquise|kuration|onboarding|lerner|rezepte) und detail (Token-/Kostenzaehler)."""
     protokoll.setdefault("zeit", jetzt_iso())
     if daten_modus() == "supabase":
         ok = _supabase_post("agent_runs", [
             {k: protokoll.get(k) for k in
-             ("zeit", "quelle", "gefunden", "neu", "analysiert", "geflaggt", "fehler", "dauer_s")}
+             ("zeit", "quelle", "gefunden", "neu", "analysiert", "geflaggt",
+              "fehler", "dauer_s", "user_id", "typ", "detail")
+             if protokoll.get(k) is not None or k not in ("user_id", "typ", "detail")}
         ])
         if not ok:
             print("[speicher] WARNUNG: agent_run konnte nicht nach Supabase geschrieben werden")
@@ -513,6 +521,135 @@ def _supabase_speichere_videos(kandidaten):
                           prefer="return=minimal,resolution=ignore-duplicates"):
             neu += len(batch)
     return neu, aktualisiert
+
+
+# ---------------------------------------------------------------------------
+# Multi-Tenant (Phase 1): Profile, Video-Zuordnungen, Auftrags-Queue.
+# Nur im Supabase-Modus aktiv — der Lokal-Modus bleibt Single-User ("lokal").
+# ---------------------------------------------------------------------------
+
+def _supabase_patch(tabelle, params, felder):
+    """Generisches PATCH auf eine Tabelle (params = PostgREST-Filter)."""
+    if requests is None or not felder:
+        return False
+    try:
+        r = requests.patch(_supabase_url(tabelle), headers=_supabase_headers(),
+                           params=params, data=json.dumps(felder), timeout=30)
+        if r.status_code >= 400:
+            print("[speicher] Supabase PATCH %s fehlgeschlagen: %s %s"
+                  % (tabelle, r.status_code, r.text[:200]))
+            return False
+        return True
+    except Exception as e:
+        print("[speicher] Supabase PATCH %s Fehler: %s" % (tabelle, e))
+        return False
+
+
+def lade_nutzer_aktiv():
+    """Alle aktiven Nutzer (Onboarding fertig, nicht geloescht) mit Profil,
+    Themen und Plan — die Iterationsbasis fuer Kurations-/Lerner-Laeufe.
+    Rueckgabe: Liste von {id, plan, profil, themen} (leer im Lokal-Modus)."""
+    if daten_modus() != "supabase":
+        return []
+    profile = _supabase_get("profiles", {
+        "select": "id,plan,onboarding_status,geloescht_am",
+        "onboarding_status": "eq.fertig",
+        "geloescht_am": "is.null",
+    }) or []
+    nutzer = []
+    for p in profile:
+        nutzer.append({
+            "id": p["id"],
+            "plan": p.get("plan") or "free",
+            "profil": lade_profil(p["id"]),
+            "themen": lade_themen(p["id"]),
+        })
+    return nutzer
+
+
+def lade_profil(user_id):
+    """radar_profile-Zeile des Nutzers (Positionen, Stilguide, Trigger, ...)."""
+    zeilen = _supabase_get("radar_profile", {"select": "*", "user_id": "eq." + str(user_id)})
+    return (zeilen or [{}])[0] if zeilen else {}
+
+
+def speichere_profil(user_id, felder):
+    """radar_profile upserten (z.B. Onboarding-Ergebnis, Lerner-Update)."""
+    felder = dict(felder)
+    felder["user_id"] = str(user_id)
+    felder["aktualisiert_am"] = jetzt_iso()
+    return _supabase_post("radar_profile", [felder],
+                          prefer="return=minimal,resolution=merge-duplicates")
+
+
+def lade_themen(user_id, nur_aktive=True):
+    params = {"select": "*", "user_id": "eq." + str(user_id)}
+    if nur_aktive:
+        params["aktiv"] = "is.true"
+    return _supabase_get("themen", params) or []
+
+
+def lade_watchlist_personen(user_id, nur_gefolgte=True):
+    params = {"select": "*", "user_id": "eq." + str(user_id)}
+    if nur_gefolgte:
+        params["folgt"] = "is.true"
+    return _supabase_get("watchlist_personen", params) or []
+
+
+def lade_zuordnungen(user_id, status_liste=None, select="*"):
+    """video_zuordnung-Zeilen des Nutzers (optional nach Status gefiltert)."""
+    params = {"select": select, "user_id": "eq." + str(user_id)}
+    if status_liste:
+        params["status"] = "in.(%s)" % ",".join(status_liste)
+    return _supabase_get("video_zuordnung", params) or []
+
+
+def speichere_zuordnungen(user_id, zeilen):
+    """Neue Inbox-Zuordnungen anlegen (Kurationslauf). Bestehende Zuordnungen
+    werden NICHT ueberschrieben (ignore-duplicates) — Nutzer-Entscheidungen
+    (status/feedback) bleiben unantastbar. Rueckgabe: Anzahl versucht."""
+    if not zeilen:
+        return 0
+    for z in zeilen:
+        z["user_id"] = str(user_id)
+        z.setdefault("zugeordnet_am", jetzt_iso())
+    ok = _supabase_post("video_zuordnung", zeilen,
+                        prefer="return=minimal,resolution=ignore-duplicates")
+    return len(zeilen) if ok else 0
+
+
+def zugeordnete_video_ids(user_id):
+    """IDs aller Videos, die dem Nutzer schon zugeordnet sind (Dedupe der Kuration)."""
+    zeilen = lade_zuordnungen(user_id, select="video_id")
+    return {z.get("video_id") for z in zeilen if z.get("video_id")}
+
+
+# --- Auftrags-Queue (ersetzt .lauf_anfrage im Supabase-Modus) ---------------
+
+def hole_offene_auftraege(typ=None, limit=5):
+    """Offene Auftraege, aelteste zuerst. typ optional (lauf|onboarding|kuration|lerner)."""
+    if daten_modus() != "supabase":
+        return []
+    params = {"select": "*", "status": "eq.offen",
+              "order": "erstellt_am.asc", "limit": str(limit)}
+    if typ:
+        params["typ"] = "eq." + typ
+    return _supabase_get("auftraege", params) or []
+
+
+def claim_auftrag(auftrag_id):
+    """Auftrag atomar claimen: offen -> laeuft. False, wenn ihn schon jemand hat
+    (der status=eq.offen-Filter macht das PATCH zum Compare-and-Swap)."""
+    return _supabase_patch("auftraege",
+                           {"id": "eq." + str(auftrag_id), "status": "eq.offen"},
+                           {"status": "laeuft", "gestartet_am": jetzt_iso()})
+
+
+def schliesse_auftrag(auftrag_id, ok=True, fehler_text=None):
+    felder = {"status": "fertig" if ok else "fehler", "beendet_am": jetzt_iso()}
+    if fehler_text:
+        felder["fehler_text"] = str(fehler_text)[:500]
+    return _supabase_patch("auftraege", {"id": "eq." + str(auftrag_id)}, felder)
 
 
 if __name__ == "__main__":

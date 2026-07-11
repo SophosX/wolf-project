@@ -1,6 +1,7 @@
 // GET /api/videos?status=inbox&plattform=&thema=&zeitraum= → {videos:[...]} (score desc)
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { holeVideos } from "@/lib/daten";
 import type { Plattform, Status } from "@/lib/typen";
 
@@ -14,7 +15,8 @@ export async function GET(req: NextRequest) {
     const thema = p.get("thema") || undefined;
     const zeitraum = parseInt(p.get("zeitraum") || "", 10);
 
-    const videos = await holeVideos({
+    const nutzer = await aktuellerNutzer();
+    const videos = await holeVideos(nutzer.userId, {
       status,
       plattform,
       thema,

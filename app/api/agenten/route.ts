@@ -4,6 +4,7 @@
 //      Scraper-Cron prüft sie minütlich und startet youtube+tiktok.
 
 import { NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import {
   fordereLaufAn,
   holeAgentRuns,
@@ -16,10 +17,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const nutzer = await aktuellerNutzer();
     const [status, runs, angefragt] = await Promise.all([
       holeAgentStatus(),
-      holeAgentRuns(),
-      laufAngefragt(),
+      holeAgentRuns(nutzer.userId),
+      laufAngefragt(nutzer.userId),
     ]);
     return NextResponse.json({
       status,
@@ -39,9 +41,10 @@ export async function GET() {
 
 export async function POST() {
   try {
+    const nutzer = await aktuellerNutzer();
     const [status, angefragt] = await Promise.all([
       holeAgentStatus(),
-      laufAngefragt(),
+      laufAngefragt(nutzer.userId),
     ]);
     if (status?.aktiv) {
       return NextResponse.json(
@@ -55,7 +58,7 @@ export async function POST() {
         { status: 409 }
       );
     }
-    await fordereLaufAn();
+    await fordereLaufAn(nutzer.userId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[api/agenten POST]", e);

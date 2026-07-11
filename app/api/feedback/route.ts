@@ -2,6 +2,7 @@
 // → aktualisiert status + feedback-Historie, triggert Lern-Update
 
 import { NextRequest, NextResponse } from "next/server";
+import { aktuellerNutzer } from "@/lib/auth";
 import { aktualisiereVideo, holeVideo } from "@/lib/daten";
 import { lernUpdate } from "@/lib/lernen";
 import { nachschubBeiBedarf } from "@/lib/nachschub";
@@ -21,6 +22,7 @@ const STATUS_MAP: Record<string, Status | null> = {
 
 export async function POST(req: NextRequest) {
   try {
+    const nutzer = await aktuellerNutzer();
     const body = await req.json();
     const { video_id, aktion, kommentar } = body || {};
 
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const video = await holeVideo(video_id);
+    const video = await holeVideo(nutzer.userId, video_id);
     if (!video) {
       return NextResponse.json({ fehler: "Video nicht gefunden: " + video_id }, { status: 404 });
     }
@@ -48,11 +50,11 @@ export async function POST(req: NextRequest) {
     };
     if (neuerStatus) patch.status = neuerStatus;
 
-    const aktualisiert = await aktualisiereVideo(video_id, patch);
+    const aktualisiert = await aktualisiereVideo(nutzer.userId, video_id, patch);
 
     // Lern-Update (Fehler hier nicht fatal, aber sichtbar loggen)
     try {
-      await lernUpdate(video, aktion, kommentar);
+      await lernUpdate(nutzer.userId, video, aktion, kommentar);
     } catch (e) {
       console.error("[api/feedback] Lern-Update fehlgeschlagen:", e);
     }
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     // Dynamik: wird die Inbox durch Entscheidungen dünn, sucht der Radar
     // sofort Nachschub (lokal; in Prod übernimmt der 4-h-Cron)
     if (aktion === "angenommen" || aktion === "abgelehnt" || aktion === "archiv") {
-      nachschubBeiBedarf().catch(() => {});
+      nachschubBeiBedarf(nutzer.userId).catch(() => {});
     }
 
     return NextResponse.json({ ok: true, video: aktualisiert });

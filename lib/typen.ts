@@ -153,11 +153,12 @@ export interface Rezept {
   veroeffentlicht: string; // ISO
   thumbnail_url: string | null;
   dauer_s: number | null;
-  fit_score: number; // 0-100 (Gemini: passt zu Chris?)
+  fit_score: number; // 0-100 (Gemini: passt zum Profil des Nutzers?)
   kategorie: RezeptKategorie;
   begruendung: string; // 1 Satz, warum das Rezept (nicht) passt
   zutaten_kurz: string[]; // max 6 Hauptzutaten aus Titel/Beschreibung
-  chris_haken: string; // was Chris kritisieren würde ("" wenn nichts)
+  chris_haken: string; // was der Nutzer kritisieren würde ("" wenn nichts) — DB-Spalte heißt `haken`
+  haken?: string; // neuer generischer Name (Supabase); chris_haken bleibt Lokal-Alias
   score: number; // 0-100 = 0.5*Community-Resonanz + 0.5*fit_score
   status: RezeptStatus;
   feedback: FeedbackEintrag[];
@@ -187,6 +188,60 @@ export interface WatchlistEintrag {
   tiktok: string | null;
   instagram: string | null;
   notiz?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Tenant: Persona/Wissensbasis pro Nutzer (Supabase-Tabellen aus
+// supabase_schema_v2.sql — radar_profile, themen, suchqueries, ...)
+// ---------------------------------------------------------------------------
+
+/** Ein Eintrag der lebenden Trigger-Liste ("Was dich erfahrungsgemäß triggert"). */
+export interface TriggerEintrag {
+  trigger: string;
+  staerke: number; // 0..1 — sortiert die Anzeige, zerfällt ohne Verstärkung
+  quelle: "onboarding" | "interview" | "feedback";
+  belege: string[]; // video_ids, aus denen der Trigger gelernt wurde
+  aktualisiert_am: string; // ISO
+}
+
+export interface ProfilPosition {
+  thema: string;
+  position: string;
+  kurzbeleg?: string;
+}
+
+export interface RadarProfil {
+  user_id: string;
+  nische: string | null;
+  sprache: string;
+  marke: string | null; // App-Titel: "«marke» Radar"
+  quelle_kanaele: { plattform: Plattform; handle: string; kanal_id?: string }[];
+  stilguide: string | null; // Markdown
+  positionen: ProfilPosition[];
+  reaktions_ausloeser: TriggerEintrag[];
+  interessen_profil: Record<string, unknown>;
+  playbook: string | null;
+  aktualisiert_am: string;
+}
+
+export interface ThemaDef {
+  user_id: string;
+  slug: string;
+  name: string;
+  kerngewicht: number; // 0..1
+  keywords: string[];
+  aktiv: boolean;
+  quelle: "onboarding" | "manuell" | "lerner";
+}
+
+export interface SuchqueryDef {
+  id?: number;
+  user_id: string;
+  thema_slug: string | null;
+  plattform: Plattform;
+  query: string;
+  aktiv: boolean;
+  quelle: "onboarding" | "manuell" | "lerner";
 }
 
 // Anzeige-Namen der Themen-Slugs (UI-Chips, Filter)
