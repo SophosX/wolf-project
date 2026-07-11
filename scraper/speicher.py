@@ -656,6 +656,13 @@ def speichere_zuordnungen(user_id, zeilen):
     for z in zeilen:
         z["user_id"] = str(user_id)
         z.setdefault("zugeordnet_am", jetzt_iso())
+    # PostgREST-Bulk verlangt identische Keys in allen Zeilen (PGRST102):
+    # archiv-Zeilen (ohne score/scores) und geflaggte (mit) auf die
+    # Key-Union normalisieren, fehlende Werte als None.
+    alle_keys = set()
+    for z in zeilen:
+        alle_keys.update(z.keys())
+    zeilen = [{k: z.get(k) for k in alle_keys} for z in zeilen]
     ok = _supabase_post("video_zuordnung", zeilen,
                         prefer="return=minimal,resolution=ignore-duplicates")
     return len(zeilen) if ok else 0
