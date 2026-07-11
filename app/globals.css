@@ -67,9 +67,25 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
 
 .tabs {
   display: flex; gap: 2px; overflow-x: auto; margin-top: 8px;
-  scrollbar-width: none;
+  scrollbar-width: none; --fade: 26px;
 }
 .tabs::-webkit-scrollbar { display: none; }
+/* Scroll-Hinweis: Rand weich ausblenden, solange dort mehr Tabs liegen.
+   mask-image blendet die Tabs selbst aus -> unabhaengig vom Blur-Header. */
+.tabs[data-mehr-rechts="true"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent);
+}
+.tabs[data-mehr-links="true"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade));
+          mask-image: linear-gradient(to right, transparent, #000 var(--fade));
+}
+.tabs[data-mehr-links="true"][data-mehr-rechts="true"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade),
+                                      #000 calc(100% - var(--fade)), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 var(--fade),
+                                      #000 calc(100% - var(--fade)), transparent);
+}
 .tab {
   padding: 8px 12px 10px; border-radius: 8px 8px 0 0;
   color: var(--text-dim); font-weight: 500; font-size: 14px;
