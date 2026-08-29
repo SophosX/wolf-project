@@ -457,9 +457,11 @@ def main():
     # (deduplizierte Queries ALLER aktiven Nutzer), nur Stufe A/B (neutraler
     # Claim), KEIN Verdict/Score/Skript — das macht kuration.py pro Nutzer.
     akquise = speicher.daten_modus() == "supabase"
-    scrape_plan = themenwelt.lade_scrape_plan(bevorzugt_user=args.user)
+    scrape_plan = themenwelt.lade_scrape_plan(bevorzugt_user=args.user,
+                                              nur_bevorzugt=bool(args.user))
     fenster_plan = scrape_plan.get("fenster") or {}
-    watchlist = scrape_plan.get("watchlist") or lade_watchlist()
+    # --user (Jetzt suchen / Auto-Nachschub): nur SEINE Queries, keine Watchlist
+    watchlist = [] if args.user else (scrape_plan.get("watchlist") or lade_watchlist())
     speicher.stelle_einstellungen_sicher()
 
     # Obergrenze fuer NEUE Kandidaten pro Quelle/Lauf: haelt Analyse-Zeit und

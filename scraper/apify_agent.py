@@ -44,7 +44,7 @@ YT_SUCHE_MAX_SHORTS = int(os.environ.get("RADAR_YT_APIFY_MAX_SHORTS",
 # Fenster nichts extra, liefert aber fuer kleine Nischen ueberhaupt Treffer.
 YT_SUCHE_DATEFILTER = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "week").strip() or "week"
 # "Breite" Suche (neue/ertragslose Queries): mehr Ergebnisse je Begriff
-YT_SUCHE_BREIT_RESULTS = int(os.environ.get("RADAR_YT_APIFY_BREIT_RESULTS", "10"))
+YT_SUCHE_BREIT_RESULTS = int(os.environ.get("RADAR_YT_APIFY_BREIT_RESULTS", "15"))
 # TikTok-Keyword-Suche (Apify clockworks) + Instagram-Hashtag-Suche — geben
 # TikTok/IG dieselbe breite Abdeckung wie die YouTube-Suche (nicht nur Watchlist).
 TIKTOK_SUCHE_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "clockworks~tiktok-scraper")
@@ -52,9 +52,12 @@ TIKTOK_SUCHE_MAX = int(os.environ.get("RADAR_TIKTOK_APIFY_MAX", "8"))      # Vid
 IG_HASHTAG_MAX = int(os.environ.get("RADAR_IG_HASHTAG_MAX", "10"))        # Posts je Hashtag
 # Breite Suche (neue/ertragslose Begriffe): mehr Ergebnisse + weiteres Alter
 TIKTOK_BREIT_MAX = int(os.environ.get("RADAR_TIKTOK_APIFY_BREIT_MAX", "15"))
-TIKTOK_BREIT_ALTER_TAGE = int(os.environ.get("RADAR_TIKTOK_BREIT_ALTER_TAGE", "365") or "0")
+# Gedeckelt auf den Vorfilter-Backstop (lauf.MAX_ALTER_TAGE): alles Aeltere wuerde
+# nach dem (bezahlten) Scrape ohnehin verworfen.
+_MAX_ALTER_BACKSTOP = int(os.environ.get("RADAR_MAX_ALTER_TAGE", "120") or "0") or 365
+TIKTOK_BREIT_ALTER_TAGE = min(_MAX_ALTER_BACKSTOP, int(os.environ.get("RADAR_TIKTOK_BREIT_ALTER_TAGE", "365") or "0"))
 IG_BREIT_MAX = int(os.environ.get("RADAR_IG_HASHTAG_BREIT_MAX", "15"))
-IG_BREIT_ALTER_TAGE = int(os.environ.get("RADAR_IG_BREIT_ALTER_TAGE", "365") or "0")
+IG_BREIT_ALTER_TAGE = min(_MAX_ALTER_BACKSTOP, int(os.environ.get("RADAR_IG_BREIT_ALTER_TAGE", "365") or "0"))
 # Alters-Obergrenze fuer die breite Keyword/Hashtag-Suche (TikTok/IG). Die clockworks-
 # Keyword-Suche liefert sonst reichweitenstarke, aber JAHRE alte Videos — Christian
 # braucht Aktuelles. 0/leer = aus. Wirkt zweifach: als Actor-Input (spart Apify-Kosten)
@@ -529,6 +532,8 @@ def sammle_youtube_suche(queries, fehler, fenster=None):
     protokoll = {q: {"query": q, "gefunden": 0, "fehler": False} for q in queries}
     if not verfuegbar():
         fehler.append("apify youtube-suche: kein APIFY_TOKEN gesetzt")
+        for p in protokoll.values():
+            p["fehler"] = True  # nicht gesucht != ertragslos
         return kandidaten, list(protokoll.values())
 
     def _query_zu_kand(it):
@@ -695,6 +700,8 @@ def sammle_tiktok_suche(queries, fehler, fenster=None):
     if not verfuegbar() or not queries:
         if not verfuegbar():
             fehler.append("apify tiktok-suche: kein APIFY_TOKEN")
+            for p in protokoll.values():
+                p["fehler"] = True  # nicht gesucht != ertragslos
         return kandidaten, list(protokoll.values())
 
     normal = [q for q in queries if (fenster or {}).get(q) != "breit"]
@@ -723,6 +730,8 @@ def sammle_instagram_hashtags(hashtags, fehler, fenster=None):
     tags = [h.lstrip("#") for h in (hashtags or []) if h]
     protokoll = {t: {"query": "#" + t, "gefunden": 0, "fehler": False} for t in tags}
     if not verfuegbar() or not tags:
+        for p in protokoll.values():
+            p["fehler"] = True  # nicht gesucht != ertragslos
         return kandidaten, list(protokoll.values())
 
     zu_alt = 0

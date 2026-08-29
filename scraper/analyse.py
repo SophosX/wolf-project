@@ -814,7 +814,7 @@ def _stufe_c_plus_anwenden(video, aussage, verdict_daten, webcheck_cache=None):
     verdict = verdict_daten.get("verdict")
     konfidenz = verdict_daten.get("konfidenz", 0.0)
     aktualitaet = bool(verdict_daten.get("aktualitaetsabhaengig"))
-    braucht_check = ((verdict == "klar_falsch" and konfidenz >= INBOX_KONFIDENZ)
+    braucht_check = ((verdict in ("klar_falsch", "irrefuehrend") and konfidenz >= INBOX_KONFIDENZ)
                      or (aktualitaet and verdict != "korrekt"))
     if not braucht_check:
         # Markieren, dass die neue Pipeline lief (Neubewertungs-Auswahl bleibt idempotent)
@@ -852,15 +852,17 @@ def _stufe_c_plus_anwenden(video, aussage, verdict_daten, webcheck_cache=None):
         verdict_daten["begruendung"] = ("[Websuche: stark irreführend] "
                                         + (grund or verdict_daten.get("begruendung", "")))
     elif urteil == "nuanciert":
-        verdict_daten["verdict"] = "strittig"
+        # 'irrefuehrend' bleibt: unbelegt/uebertrieben ist per Definition nuanciert,
+        # aber als Botschaft weiterhin reaktionswuerdig (Quellen haengen jetzt dran)
+        verdict_daten["verdict"] = "irrefuehrend" if verdict == "irrefuehrend" else "strittig"
         verdict_daten["begruendung"] = ("[Websuche: Evidenz nuanciert] "
                                         + (grund or verdict_daten.get("begruendung", "")))
     elif urteil == "korrekt":
         verdict_daten["verdict"] = "korrekt"
         if grund:
             verdict_daten["begruendung"] = grund + " (per Websuche geprüft)"
-    else:  # unklar — konservativ: nicht in die Inbox
-        verdict_daten["verdict"] = "strittig"
+    else:  # unklar — konservativ: klar_falsch nicht in die Inbox; irrefuehrend bleibt
+        verdict_daten["verdict"] = "irrefuehrend" if verdict == "irrefuehrend" else "strittig"
         verdict_daten["begruendung"] = ("[Websuche ohne klares Ergebnis] "
                                         + (grund or verdict_daten.get("begruendung", "")))
     return verdict_daten

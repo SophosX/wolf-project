@@ -45,7 +45,6 @@ import themenwelt
 # Bewertungen pro Lauf bleiben durch kuration_max_neu gedeckelt.
 POOL_FENSTER_TAGE = int(os.environ.get("RADAR_KURATION_FENSTER_TAGE",
                                        os.environ.get("RADAR_KURATION_ERSTLAUF_TAGE", "14")))
-POOL_FENSTER_TAGE_ERSTLAUF = POOL_FENSTER_TAGE
 
 
 # Ziel-Fuellstand der Inbox: darunter wird ein zweiter Bewertungs-Batch erlaubt
@@ -64,9 +63,12 @@ def _auto_nachschub(uid):
         "select": "id", "user_id": "eq." + str(uid), "aktiv": "is.true", "limit": "1"}) or []
     if not queries:
         return False
-    offen = speicher._supabase_get("auftraege", {
-        "select": "id", "user_id": "eq." + str(uid), "typ": "eq.lauf",
-        "status": "in.(offen,laeuft)", "limit": "1"}) or []
+    params = {"select": "id", "user_id": "eq." + str(uid), "typ": "eq.lauf",
+              "status": "in.(offen,laeuft)", "limit": "1"}
+    eigener = (os.environ.get("RADAR_AUFTRAG_ID") or "").strip()
+    if eigener.isdigit():
+        params["id"] = "neq." + eigener  # der gerade laufende eigene Auftrag zaehlt nicht
+    offen = speicher._supabase_get("auftraege", params) or []
     if offen:
         return False
     zeilen = speicher._supabase_get("einstellungen", {
@@ -92,13 +94,14 @@ def _iso_vor_tagen(tage):
             - datetime.timedelta(days=tage)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _letzter_kurationslauf(user_id):
-    """Zeit des letzten Kurationslaufs des Nutzers (agent_runs) oder None."""
+def _kurationslaeufe_heute(user_id):
+    """Anzahl Kurationslaeufe des Nutzers seit 00:00 UTC (Plan-Budget-Gate)."""
+    heute = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
     zeilen = speicher._supabase_get("agent_runs", {
-        "select": "zeit", "user_id": "eq." + str(user_id), "typ": "eq.kuration",
-        "order": "zeit.desc", "limit": "1",
+        "select": "id", "user_id": "eq." + str(user_id), "typ": "eq.kuration",
+        "zeit": "gte." + heute, "limit": "50",
     }) or []
-    return zeilen[0]["zeit"] if zeilen else None
+    return len(zeilen)
 
 
 def _watchlist_treffer(video, watchlist_personen):
@@ -199,14 +202,16 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     SEMANTIK_SCHWELLE = float(os.environ.get("RADAR_SEMANTIK_SCHWELLE", "0.66"))
     pool_nach_id = {v.get("id"): v for v in kandidaten}
     semantisch = 0
-    seit_iso = min((v.get("gefunden_am") or "9999" for v in pool), default=None)
-    if pool_nach_id and seit_iso:
+    # Gleiches Fenster wie der Pool (der Pool enthaelt via aktualisiert_am auch
+    # aeltere, nachextrahierte Videos — match_pool filtert nur nach gefunden_am)
+    seit_iso = _iso_vor_tagen(POOL_FENSTER_TAGE)
+    if pool_nach_id:
         for slug, thema in themen.items():
             emb = speicher.hole_thema_embedding(uid, slug, thema)
             if not emb:
                 continue
             treffer = speicher._supabase_rpc("match_pool", {
-                "p_embedding": emb, "p_seit": seit_iso, "p_k": 10}) or []
+                "p_embedding": emb, "p_seit": seit_iso, "p_k": 25}) or []
             for t in treffer:
                 vid = t.get("id")
                 if (vid not in pool_nach_id or vid in gematcht_ids
@@ -249,6 +254,9 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     gefiltert = []
     for eintrag in gematcht:
         score_alt, slug, v = eintrag
+        if _watchlist_treffer(v, watchlist):
+            gefiltert.append(eintrag)  # Beobachtungsliste: Absender IST das Relevanz-Signal
+            continue
         emb_v = v.get("claim_embedding")
         if isinstance(emb_v, str):
             try:
@@ -263,7 +271,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
             gefiltert.append(eintrag)
             continue
         sim, bester_slug = max(sims, key=lambda t: t[0])
-        if bester_slug != slug and not _watchlist_treffer(v, watchlist):
+        if bester_slug != slug:
             slug = bester_slug
             eintrag = (_match_score(v, slug, themen, gelernt, False), slug, v)
         grenze = MIN_AEHNLICHKEIT
@@ -287,10 +295,14 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
 
     gematcht.sort(key=lambda t: -t[0])
 
-    cap = limit or limits["kuration_max_neu"]
-    auswahl = gematcht[:cap]
-    print("[kuration] %s (%s): Pool=%d, neu=%d, gematcht=%d, bewertet werden=%d (+Nachschlag bei Inbox<%d)"
-          % (uid, plan, len(pool), len(kandidaten), len(gematcht), len(auswahl), INBOX_MIN))
+    cap = limit if limit is not None else limits["kuration_max_neu"]
+    # Nachschlag (2. Batch) nur innerhalb des Plan-Tagesbudgets: sonst koennte
+    # der Auftrags-Pfad (Jetzt suchen / Auto-Nachschub) beliebig viele
+    # Stufe-C-Bewertungen pro Tag ausloesen.
+    nachschlag_erlaubt = _kurationslaeufe_heute(uid) <= int(limits.get("kuration_pro_tag") or 1)
+    print("[kuration] %s (%s): Pool=%d, neu=%d, gematcht=%d, bewertet werden=%d (max %d bei Inbox<%d)"
+          % (uid, plan, len(pool), len(kandidaten), len(gematcht), min(cap, len(gematcht)),
+             cap * 2 if nachschlag_erlaubt else cap, INBOX_MIN))
 
     # --- Stufe C/C+/D gegen das Nutzer-Profil -------------------------------
     positions_text = themenwelt.massstab_text(uid, profil, themen)
@@ -304,14 +316,13 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     inbox_neu = 0
     zuordnungen, geflaggt, korrekt, bewertet = [], 0, 0, 0
     for _, slug, video in gematcht:
-        if bewertet >= cap and (inbox_vorher + inbox_neu >= INBOX_MIN or bewertet >= cap * 2):
+        if bewertet >= cap and (not nachschlag_erlaubt or inbox_vorher + inbox_neu >= INBOX_MIN
+                                or bewertet >= cap * 2):
             break
         # Kopie: bewerte_kandidat/_markiere_verworfen mutieren das Dict, der
         # Pool-Ausschnitt wird aber fuer ALLE Nutzer wiederverwendet.
         video = dict(video)
         aussage = ((video.get("claim") or {}).get("aussage") or "").strip()
-        if not aussage:
-            continue
         bewertet += 1
         webcheck_cache = video.get("webcheck") or None
         try:
@@ -321,6 +332,13 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
                 webcheck_cache=webcheck_cache)
         except Exception as e:
             fehler.append("%s: %s" % (video.get("id"), e))
+            # Als Fehler-Archiv festhalten: sonst wird derselbe Kandidat 14 Tage
+            # lang in jedem Lauf erneut (kostenpflichtig) versucht.
+            zuordnungen.append({
+                "video_id": video["id"], "status": "archiv", "thema_slug": slug,
+                "verdict": {"verdict": "fehler", "begruendung": str(e)[:300]},
+                "begruendung": "Bewertung fehlgeschlagen: " + str(e)[:200],
+            })
             continue
 
         # Frisches Websuche-Ergebnis am Pool-Video cachen (fuer alle Nutzer)
@@ -356,7 +374,6 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
                         "quellen": claim.get("quellen") or []},
             "begruendung": claim["begruendung"],
         })
-    auswahl = gematcht[:bewertet]
 
     gespeichert = speicher.speichere_zuordnungen(uid, zuordnungen)
     inbox_gesamt = inbox_vorher + inbox_neu
@@ -377,7 +394,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     protokoll = {
         "user_id": str(uid), "typ": "kuration", "quelle": "kuration",
         "gefunden": len(kandidaten), "neu": gespeichert,
-        "analysiert": len(auswahl), "geflaggt": geflaggt,
+        "analysiert": bewertet, "geflaggt": geflaggt,
         "fehler": fehler, "dauer_s": int(time.time() - start),
         # Diagnose fuers UI ("warum ist meine Inbox leer?")
         "detail": diagnose,

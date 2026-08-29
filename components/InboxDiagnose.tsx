@@ -6,7 +6,7 @@
 // schärfen, Interessen erweitern. Nie ein stummes "Inbox leer".
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { relativeZeit } from "@/lib/format";
 
 interface QueryStatus {
@@ -51,7 +51,6 @@ export default function InboxDiagnose({ inboxAnzahl }: { inboxAnzahl: number }) 
   const [offen, setOffen] = useState(inboxAnzahl === 0);
   const [laeuft, setLaeuft] = useState(false);
   const [meldung, setMeldung] = useState<string | null>(null);
-  const router = useRouter();
 
   const laden = useCallback(async () => {
     try {
@@ -66,20 +65,14 @@ export default function InboxDiagnose({ inboxAnzahl }: { inboxAnzahl: number }) 
     laden();
   }, [laden]);
 
-  // Laeuft eine Suche: alle 15 s nachladen, bei Ende Liste refreshen
+  // Laeuft eine Suche: alle 15 s nachladen. (Den Listen-Refresh am Ende
+  // uebernimmt SuchStatusLeiste — sie sitzt auf derselben Seite.)
+  const sucheAngefragt = Boolean(d?.lauf.angefragt || d?.lauf.aktiv);
   useEffect(() => {
-    if (!d || !(d.lauf.aktiv || d.lauf.angefragt)) return;
-    const t = setInterval(async () => {
-      await laden();
-    }, 15000);
+    if (!sucheAngefragt) return;
+    const t = setInterval(() => { laden(); }, 15000);
     return () => clearInterval(t);
-  }, [d, laden]);
-  useEffect(() => {
-    if (d && !d.lauf.aktiv && !d.lauf.angefragt && laeuft) {
-      setLaeuft(false);
-      router.refresh();
-    }
-  }, [d, laeuft, router]);
+  }, [sucheAngefragt, laden]);
 
   async function breiterSuchen() {
     setMeldung(null);
@@ -94,13 +87,14 @@ export default function InboxDiagnose({ inboxAnzahl }: { inboxAnzahl: number }) 
       if (!res.ok) throw new Error(a.fehler || "Fehler " + res.status);
       setMeldung(
         a.gestartet
-          ? `Alle ${a.queries} Suchanfragen suchen jetzt im weitesten Zeitraum — der Lauf startet in unter einer Minute (Ergebnis in ~10–30 min).`
+          ? `${a.queries} von ${a.gesamt} Suchanfragen (die ohne Treffer) suchen jetzt im weitesten Zeitraum — der Lauf startet in unter einer Minute (Ergebnis in ~10–30 min).`
           : "Suchanfragen erweitert — ein Lauf ist bereits unterwegs, die Erweiterung greift dort."
       );
       await laden();
     } catch (e) {
-      setLaeuft(false);
       setMeldung(e instanceof Error ? e.message : "Breiter suchen fehlgeschlagen");
+    } finally {
+      setLaeuft(false);
     }
   }
 
@@ -225,10 +219,17 @@ export default function InboxDiagnose({ inboxAnzahl }: { inboxAnzahl: number }) 
               klingt („Mit X heilst du Y“), oder wähle weitere Interessen.
             </p>
           )}
-          {d.empfehlung === "warten" && (
+          {d.empfehlung === "warten" && z.gesucht === 0 && (
             <p>
               <b>Alles bereit.</b> Die erste Suche läuft {inZeit(d.naechsteSuche)} automatisch —
               oder du startest sie jetzt breit.
+            </p>
+          )}
+          {d.empfehlung === "warten" && z.gesucht > 0 && (
+            <p>
+              <b>Gefunden, noch nicht geprüft.</b> Deine Begriffe haben Videos gesichtet; die
+              Prüfung gegen deine Themen folgt beim nächsten Kurationslauf (Free: täglich, Pro: alle 4 h)
+              — oder du startest jetzt eine Suche samt Prüfung.
             </p>
           )}
           {d.bereiche_ohne_thema.length > 0 && (
@@ -240,12 +241,16 @@ export default function InboxDiagnose({ inboxAnzahl }: { inboxAnzahl: number }) 
           )}
           <div className="diagnose-knoepfe">
             {z.gesamt > 0 && (
-              <button className="btn primaer" disabled={laeuft} onClick={breiterSuchen}>
+              <button className="btn primaer" disabled={laeuft || sucheAngefragt} onClick={breiterSuchen}>
                 {laeuft ? "⏳ wird angefordert …" : "🔎 Jetzt breiter suchen"}
               </button>
             )}
-            <a className="btn" href="/einstellungen">✏️ Suchbegriffe anpassen</a>
-            <a className="btn" href="/einstellungen">➕ Interessen erweitern</a>
+            <Link className="btn" href="/einstellungen#suchanfragen">
+              <span aria-hidden="true">✏️ </span>Suchbegriffe anpassen
+            </Link>
+            <Link className="btn" href="/einstellungen#interessen">
+              <span aria-hidden="true">➕ </span>Interessen erweitern
+            </Link>
           </div>
           {meldung && <p className="diagnose-meldung">{meldung}</p>}
         </div>

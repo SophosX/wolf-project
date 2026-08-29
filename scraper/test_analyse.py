@@ -154,8 +154,8 @@ def main():
     a = nach_id.get("tiktok:test_carbs18uhr")
     pruefe(a is not None, "(a) Carbs-nach-18-Uhr-Mythos überlebt die Pipeline", fehler)
     if a:
-        pruefe(a["claim"]["verdict"] == "klar_falsch",
-               "(a) Verdict ist klar_falsch (ist: " + a["claim"]["verdict"] + ")", fehler)
+        pruefe(a["claim"]["verdict"] in ("klar_falsch", "irrefuehrend"),
+               "(a) Verdict ist klar_falsch/irrefuehrend (ist: " + a["claim"]["verdict"] + ")", fehler)
         pruefe(a["claim"]["konfidenz"] >= 0.75,
                "(a) Konfidenz >= 0.75 (ist: " + str(a["claim"]["konfidenz"]) + ")", fehler)
         pruefe(a["status"] == "inbox",

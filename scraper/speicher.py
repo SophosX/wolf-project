@@ -433,13 +433,15 @@ def _supabase_get(tabelle, params):
         return None
 
 
-def _supabase_post(tabelle, zeilen, prefer="return=minimal"):
+def _supabase_post(tabelle, zeilen, prefer="return=minimal", params=None):
+    """params: zusaetzliche Query-Parameter, z.B. {"on_conflict": "user_id,plattform,query"}
+    (PostgREST nimmt sonst den Primaerschluessel als Konflikt-Ziel)."""
     if requests is None or not zeilen:
         return bool(zeilen) is False
     try:
         headers = dict(_supabase_headers())
         headers["Prefer"] = prefer
-        r = requests.post(_supabase_url(tabelle), headers=headers,
+        r = requests.post(_supabase_url(tabelle), headers=headers, params=params or None,
                           data=json.dumps(zeilen), timeout=60)
         if r.status_code >= 400:
             print("[speicher] Supabase POST %s fehlgeschlagen: %s %s" % (tabelle, r.status_code, r.text[:200]))

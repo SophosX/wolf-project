@@ -43,6 +43,7 @@ def main():
         "select": "id,plattform,titel,kanal,views,caption,transkript,claim,gefunden_am,quelle",
         "gefunden_am": "gte." + seit,
         "claim->>verdict": "eq.aussortiert",
+        "claim->>neutral_geprueft": "is.null",
         "order": "views.desc",
         "limit": str(args.limit),
     }) or []

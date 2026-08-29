@@ -23,31 +23,42 @@ import speicher
 MAX_AUFTRAEGE_PRO_TICK = 3
 
 
-def _run(cmd):
-    """Subprozess mit durchgereichtem Output; Rueckgabe True bei Exit 0."""
+RADAR_LOCK = "/tmp/radar.lock"
+
+
+def _run(cmd, auftrag_id=None):
+    """Subprozess mit durchgereichtem Output; Rueckgabe True bei Exit 0.
+    Laeuft unter demselben flock wie die Cron-Jobs (kein paralleler Scrape
+    mit dem 4h-Lauf / kuration --alle => keine doppelten Apify-/Gemini-Kosten).
+    RADAR_AUFTRAG_ID: damit die Kuration den EIGENEN Auftrag beim Auto-Nachschub-
+    Check ignorieren kann."""
+    env = dict(os.environ)
+    if auftrag_id is not None:
+        env["RADAR_AUFTRAG_ID"] = str(auftrag_id)
+    voll = ["flock", RADAR_LOCK] + list(cmd)
     print("[worker] starte: %s" % " ".join(cmd))
-    ergebnis = subprocess.run(cmd, cwd=SCRAPER_DIR)
+    ergebnis = subprocess.run(voll, cwd=SCRAPER_DIR, env=env)
     return ergebnis.returncode == 0
 
 
 def bearbeite(auftrag):
     typ = auftrag.get("typ")
     user_id = auftrag.get("user_id")
+    aid = auftrag.get("id")
     if typ == "lauf":
-        # "Jetzt suchen": frische Akquise (Cooldown haelt die Kosten klein —
-        # kuerzlich gescrapte Queries werden uebersprungen), dann Kuration
-        # fuer den anfragenden Nutzer.
+        # "Jetzt suchen"/Auto-Nachschub: Akquise NUR mit den Queries des
+        # Nutzers (ohne Rotation/24h-Cooldown, min. 1h), dann seine Kuration.
         cmd = [sys.executable, "-u", "lauf.py", "--nur", "youtube,tiktok"]
         if user_id:
             cmd += ["--user", str(user_id)]
-        ok = _run(cmd)
+        ok = _run(cmd, aid)
         if user_id:
-            ok = _run([sys.executable, "-u", "kuration.py", "--user", str(user_id)]) and ok
+            ok = _run([sys.executable, "-u", "kuration.py", "--user", str(user_id)], aid) and ok
         return ok
     if typ == "kuration":
         if not user_id:
             return False
-        return _run([sys.executable, "-u", "kuration.py", "--user", str(user_id)])
+        return _run([sys.executable, "-u", "kuration.py", "--user", str(user_id)], aid)
     if typ == "onboarding":
         if not user_id:
             return False

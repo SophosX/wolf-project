@@ -10,6 +10,7 @@ import { aktuellerNutzer } from "@/lib/auth";
 import { datenModus, holeProfil, holeRadarProfil, holeThemen, supabaseAdmin } from "@/lib/daten";
 import { interessenBereiche, starterPack, validiereLabels } from "@/lib/interessen";
 import { planLimits } from "@/lib/plan";
+import { suchNorm } from "@/lib/suchnorm";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** Reihum über die Bereiche (1. Element jedes Bereichs, dann 2. …), damit
@@ -44,8 +45,15 @@ async function starterPackAnwenden(
   const konto = await holeProfil(userId).catch(() => null);
   const limits = planLimits(konto?.plan, konto?.limits);
   const packs = labels.map((l) => ({ slug: l, ...starterPack([l]) }));
+  const gesehenSlug = new Set<string>();
   const pack = {
-    themen: reihum(packs.map((p) => p.themen)),
+    // Dedupe nach Slug (ein Thema in zwei Bereichen wuerde den Upsert sonst
+    // mit "cannot affect row a second time" scheitern lassen)
+    themen: reihum(packs.map((p) => p.themen)).filter((t) => {
+      if (gesehenSlug.has(t.slug)) return false;
+      gesehenSlug.add(t.slug);
+      return true;
+    }),
     queries: reihum(packs.map((p) => p.queries)),
     trigger: packs.flatMap((p) => p.trigger),
   };
@@ -67,31 +75,37 @@ async function starterPackAnwenden(
     });
   }
   if (themenZeilen.length > 0) {
-    await sb.from("themen").upsert(themenZeilen, { onConflict: "user_id,slug" });
+    const { error } = await sb.from("themen").upsert(themenZeilen, { onConflict: "user_id,slug" });
+    if (error) throw new Error("themen upsert: " + error.message);
   }
   const alleSlugs = new Set([...vorhandeneSlugs, ...themenZeilen.map((t) => t.slug)]);
   const bereicheOhneThema = packs
     .filter((p) => !p.themen.some((t) => alleSlugs.has(t.slug)))
     .map((p) => p.slug);
 
-  const { count: queryZahl } = await sb
-    .from("suchqueries").select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-  let queryPlatz = Math.max(0, limits.suchqueries - (queryZahl || 0));
+  const { data: vorhandeneQueries } = await sb
+    .from("suchqueries").select("plattform, query").eq("user_id", userId);
+  const vorhandeneKeys = new Set(
+    (vorhandeneQueries || []).map((q: any) => q.plattform + "|" + String(q.query).trim().toLowerCase()));
+  let queryPlatz = Math.max(0, limits.suchqueries - vorhandeneKeys.size);
   const queryZeilen = [];
   let queriesVerworfen = 0;
   for (const q of pack.queries) {
+    const key = q.plattform + "|" + q.query.trim().toLowerCase();
+    if (vorhandeneKeys.has(key)) continue; // schon da: zaehlt weder als neu noch als verworfen
     if (queryPlatz <= 0) { queriesVerworfen++; continue; }
     queryPlatz--;
+    vorhandeneKeys.add(key);
     queryZeilen.push({
       user_id: userId, plattform: q.plattform, query: q.query,
       aktiv: true, quelle: "onboarding",
     });
   }
   if (queryZeilen.length > 0) {
-    await sb.from("suchqueries").upsert(queryZeilen, {
+    const { error } = await sb.from("suchqueries").upsert(queryZeilen, {
       onConflict: "user_id,plattform,query", ignoreDuplicates: true,
     });
+    if (error) throw new Error("suchqueries upsert: " + error.message);
   }
   const ergebnis: StarterErgebnis = {
     themen_neu: themenZeilen.length, themen_verworfen: themenVerworfen,
@@ -109,11 +123,12 @@ async function starterPackAnwenden(
     .filter((t) => !texte.has(t.toLowerCase()))
     .map((t) => ({ trigger: t, staerke: 0.6, quelle: "onboarding", belege: [], aktualisiert_am: jetzt }));
   if (neue.length > 0) {
-    await sb.from("radar_profile").upsert({
+    const { error } = await sb.from("radar_profile").upsert({
       user_id: userId,
       reaktions_ausloeser: [...bestehend, ...neue].slice(0, 25),
       aktualisiert_am: jetzt,
     });
+    if (error) throw new Error("radar_profile upsert: " + error.message);
   }
   return ergebnis;
 }
@@ -144,14 +159,17 @@ export async function GET() {
       .from("suchqueries")
       .select("id, plattform, query, thema_slug, aktiv")
       .eq("user_id", nutzer.userId);
-    // Ertrag je Suchanfrage (scrape_status) — "fand zuletzt 6 Videos" / "3× leer"
-    const { data: statusRoh } = await sb
-      .from("scrape_status").select("plattform, query_norm, zuletzt, letzte_treffer, leer_folge");
+    // Ertrag je Suchanfrage (scrape_status, global -> nur eigene Norms laden)
+    const eigeneNorms = [...new Set((queriesRoh || []).map((q: any) => suchNorm(q.query)))];
+    const { data: statusRoh } = eigeneNorms.length === 0
+      ? { data: [] as any[] }
+      : await sb
+          .from("scrape_status").select("plattform, query_norm, zuletzt, letzte_treffer, leer_folge")
+          .in("query_norm", eigeneNorms);
     const statusMap = new Map<string, any>();
     for (const s of statusRoh || []) statusMap.set(s.plattform + "|" + s.query_norm, s);
     const queries = (queriesRoh || []).map((q: any) => {
-      const s = statusMap.get(
-        q.plattform + "|" + String(q.query || "").trim().replace(/^#/, "").toLowerCase());
+      const s = statusMap.get(q.plattform + "|" + suchNorm(q.query));
       return {
         ...q,
         letzte_treffer: Number(s?.letzte_treffer || 0),

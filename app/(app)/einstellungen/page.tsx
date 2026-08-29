@@ -17,10 +17,12 @@ function Ertrag({ q }: { q: Query }) {
   if (!q.zuletzt) return <span className="query-ertrag">noch nicht gesucht</span>;
   if ((q.letzte_treffer || 0) > 0)
     return <span className="query-ertrag gut">{q.letzte_treffer} Treffer zuletzt</span>;
-  const n = q.leer_folge || 1;
+  const n = q.leer_folge || 0;
+  // leer_folge 0 bei 0 Treffern = der letzte Lauf war gestoert (kein Urteil ueber den Begriff)
+  if (n === 0) return <span className="query-ertrag">zuletzt keine Treffer</span>;
   return (
     <span className={"query-ertrag" + (n >= 3 ? " tot" : "")}>
-      {n}× ohne Treffer{n >= 3 ? " — ersetzen?" : ""}
+      {n}× ohne Treffer{n >= 3 ? " — wird ersetzt" : " — sucht breiter"}
     </span>
   );
 }
@@ -142,7 +144,16 @@ export default function EinstellungenSeite() {
       const d = await res.json();
       if (!res.ok) setFehler(d.fehler || "Speichern fehlgeschlagen.");
       else {
-        setMeldung("Gespeichert — Änderungen greifen ab dem nächsten Lauf.");
+        const s = d.starter as {
+          themen_verworfen: number; queries_verworfen: number;
+          limits: { themen: number; suchqueries: number };
+        } | null;
+        const cap = s && (s.themen_verworfen > 0 || s.queries_verworfen > 0)
+          ? ` Plan-Limit erreicht (${s.limits.themen} Themen / ${s.limits.suchqueries} Suchanfragen): ` +
+            `${s.themen_verworfen} Themen und ${s.queries_verworfen} Suchanfragen des neuen Bereichs ` +
+            `wurden nicht übernommen — Themen/Suchanfragen tauschen oder Plan erweitern.`
+          : "";
+        setMeldung("Gespeichert — Änderungen greifen ab dem nächsten Lauf." + cap);
         setNeueQuery("");
         await lade();
       }
@@ -186,7 +197,7 @@ export default function EinstellungenSeite() {
       </div>
 
       {daten.interessen && daten.interessen.length > 0 && (
-        <div className="karte" style={{ padding: 16, marginTop: 12 }}>
+        <div className="karte" id="interessen" style={{ padding: 16, marginTop: 12 }}>
           <div className="abschnitt-titel">Deine Interessen-Bereiche</div>
           <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
             Neu angewählte Bereiche bringen sofort Start-Themen und Suchanfragen
@@ -276,7 +287,7 @@ export default function EinstellungenSeite() {
         ))}
       </div>
 
-      <div className="karte" style={{ padding: 16, marginTop: 12 }}>
+      <div className="karte" id="suchanfragen" style={{ padding: 16, marginTop: 12 }}>
         <div className="abschnitt-titel">Suchanfragen ({daten.queries.length})</div>
         <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
           Claim-formulierte Suchen, mit denen dein Radar YouTube/TikTok/Instagram
@@ -285,21 +296,23 @@ export default function EinstellungenSeite() {
           und ersetzt sie nach drei leeren Läufen durch eine breitere Variante.
         </p>
         {daten.queries.map((q) => (
-          <label key={q.id} style={{ display: "block", padding: "1px 0" }}>
-            <input
-              type="checkbox"
-              checked={loeschListe.includes(q.id)}
-              onChange={(e) =>
-                setLoeschListe(
-                  e.target.checked
-                    ? [...loeschListe, q.id]
-                    : loeschListe.filter((id) => id !== q.id)
-                )
-              }
-            />{" "}
-            <span style={{ color: "var(--text-dim)" }}>[{q.plattform}]</span> {q.query}
+          <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 0" }}>
+            <label>
+              <input
+                type="checkbox"
+                checked={loeschListe.includes(q.id)}
+                onChange={(e) =>
+                  setLoeschListe(
+                    e.target.checked
+                      ? [...loeschListe, q.id]
+                      : loeschListe.filter((id) => id !== q.id)
+                  )
+                }
+              />{" "}
+              <span style={{ color: "var(--text-dim)" }}>[{q.plattform}]</span> {q.query}
+            </label>
             <Ertrag q={q} />
-          </label>
+          </div>
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <select value={neuePlattform} onChange={(e) => setNeuePlattform(e.target.value)}>

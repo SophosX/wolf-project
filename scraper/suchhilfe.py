@@ -67,6 +67,7 @@ def ersetze_tote_queries(max_pro_lauf=None):
     tote = speicher._supabase_get("scrape_status", {
         "select": "plattform,query_norm,leer_folge",
         "leer_folge": "gte.%d" % TOT_AB,
+        "fenster": "in.(year,breit)",   # erst wenn das weiteste Fenster leer blieb
         "order": "leer_folge.desc",
     }) or []
     if not tote:
@@ -101,10 +102,12 @@ def ersetze_tote_queries(max_pro_lauf=None):
             ok = speicher._supabase_post("suchqueries", [{
                 "user_id": uid, "plattform": key[0], "query": neu,
                 "thema_slug": q.get("thema_slug"), "aktiv": True, "quelle": "lerner",
-            }], prefer="return=minimal,resolution=ignore-duplicates")
+            }], prefer="return=minimal,resolution=ignore-duplicates",
+                params={"on_conflict": "user_id,plattform,query"})
+            if not ok:
+                continue  # Variante nicht angelegt -> alten Begriff NICHT verlieren
             speicher._supabase_patch("suchqueries", {"id": "eq.%s" % q["id"]}, {"aktiv": False})
-            if ok:
-                _hinweis(uid, {"alt": q["query"], "neu": neu, "plattform": key[0], "zeit": jetzt})
+            _hinweis(uid, {"alt": q["query"], "neu": neu, "plattform": key[0], "zeit": jetzt})
             print("[suchhilfe] %s: „%s“ (%dx leer) -> „%s“ [%s]"
                   % (uid, q["query"], int(t.get("leer_folge") or 0), neu, key[0]))
         # Zaehler zuruecksetzen, damit derselbe tote Begriff nicht jeden Lauf neu ersetzt wird

@@ -9,7 +9,6 @@ import { aktuellerNutzer } from "@/lib/auth";
 import {
   datenModus,
   fordereLaufAn,
-  holeAgentStatus,
   holeEinstellungsWert,
   laufAngefragt,
   supabaseAdmin,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/daten";
 import { interessenBereiche, starterPack } from "@/lib/interessen";
 import { planLimits } from "@/lib/plan";
+import { suchNorm } from "@/lib/suchnorm";
 import { naechsteVideoSuche } from "@/lib/zeitplan";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +45,7 @@ export interface KurationDiagnose {
 
 export type Empfehlung = "laeuft" | "warten" | "breiter" | "spezifizieren" | "ok";
 
-function norm(q: string): string {
-  return String(q || "").trim().replace(/^#/, "").toLowerCase();
-}
+const norm = suchNorm;
 
 export async function GET() {
   try {
@@ -58,28 +56,33 @@ export async function GET() {
     const sb = await supabaseAdmin();
     const uid = nutzer.userId;
 
+    // Eigene Queries zuerst — scrape_status ist eine GLOBALE Tabelle (alle Tenants),
+    // daher nur die eigenen Norms laden (kein Max-Rows-Abschneiden, keine Fremddaten).
+    const { data: queriesRoh } = await sb
+      .from("suchqueries").select("id, plattform, query, aktiv, quelle").eq("user_id", uid)
+      .order("id", { ascending: true });
+    const meineNorms = [...new Set((queriesRoh || []).map((q: any) => norm(q.query)))];
     const [
-      { data: queriesRoh },
       { data: statusRoh },
       { data: kurationRoh },
       { data: themenRoh },
       { data: profilRoh },
       { data: kontoRoh },
       angefragt,
-      agentStatus,
       zaehler,
       hinweise,
     ] = await Promise.all([
-      sb.from("suchqueries").select("id, plattform, query, aktiv, quelle").eq("user_id", uid)
-        .order("id", { ascending: true }),
-      sb.from("scrape_status").select("plattform, query_norm, zuletzt, letzte_treffer, leer_folge, fenster"),
+      meineNorms.length === 0
+        ? Promise.resolve({ data: [] as any[] })
+        : sb.from("scrape_status")
+            .select("plattform, query_norm, zuletzt, letzte_treffer, leer_folge, fenster")
+            .in("query_norm", meineNorms),
       sb.from("agent_runs").select("zeit, neu, geflaggt, detail").eq("user_id", uid)
         .eq("typ", "kuration").order("zeit", { ascending: false }).limit(1),
       sb.from("themen").select("slug, aktiv").eq("user_id", uid),
       sb.from("radar_profile").select("interessen_profil").eq("user_id", uid).maybeSingle(),
       sb.from("profiles").select("plan, limits").eq("id", uid).maybeSingle(),
       laufAngefragt(uid),
-      holeAgentStatus(),
       zaehleStatus(uid).catch(() => ({} as Record<string, number>)),
       holeEinstellungsWert<any[]>(uid, "such_hinweise", []).catch(() => []),
     ]);
@@ -138,15 +141,23 @@ export async function GET() {
       .filter((b) => !starterPack([b.slug]).themen.some((t) => aktiveSlugs.has(t.slug)))
       .map((b) => ({ slug: b.slug, label: b.label, emoji: b.emoji }));
 
-    const laeuft = Boolean(agentStatus?.aktiv) || angefragt;
+    // Hinweis: holeAgentStatus() ist im Supabase-Modus immer null — "laeuft"
+    // bedeutet hier: ein Lauf-Auftrag des Nutzers ist offen/laeuft.
+    const laeuft = angefragt;
+    // Nur BESTAENDIG ertragslose Begriffe (leer_folge >= 1 = auch der vorletzte Lauf
+    // war leer bzw. der Begriff ist schon verbreitert) zaehlen fuer "breiter" —
+    // ein einzelner ruhiger Lauf soll nicht das ganze Konto umschalten.
+    const bestaendigLeer = ohneTreffer.filter((q) => q.leer_folge >= 1);
+    const bearbeitet =
+      (zaehler.angenommen || 0) + (zaehler.gespeichert || 0) + (zaehler.archiv || 0);
     let empfehlung: Empfehlung = "ok";
     if (laeuft) empfehlung = "laeuft";
     else if (aktive.length === 0) empfehlung = "spezifizieren";
     else if (gesucht.length === 0 || !kuration) empfehlung = "warten";
-    else if (zusammenfassung.treffer_letzter === 0 || ohneTreffer.length * 2 >= gesucht.length) {
+    else if (zusammenfassung.treffer_letzter === 0 || bestaendigLeer.length * 2 > gesucht.length) {
       empfehlung = "breiter";
     } else if ((kuration.detail.geflaggt || 0) === 0 && (zaehler.inbox || 0) === 0
-               && (zaehler.strittig || 0) === 0) {
+               && (zaehler.strittig || 0) === 0 && bearbeitet === 0) {
       empfehlung = "spezifizieren";
     }
 
@@ -154,7 +165,7 @@ export async function GET() {
       queries,
       zusammenfassung,
       kuration,
-      lauf: { angefragt, aktiv: Boolean(agentStatus?.aktiv) },
+      lauf: { angefragt, aktiv: false },
       naechsteSuche: naechsteVideoSuche().toISOString(),
       hinweise: Array.isArray(hinweise) ? hinweise.slice(-8).reverse() : [],
       bestand: {
@@ -192,34 +203,41 @@ export async function POST(req: NextRequest) {
       );
     }
     // Weitestes Fenster erzwingen: leer_folge >= 2 => YouTube 'year', TikTok/IG 'breit'.
-    // zuletzt bleibt stehen (Mindestabstand 1 h bleibt als Kostenschutz).
+    // NUR fuer ertragslose Begriffe (letzte_treffer = 0): scrape_status ist global —
+    // produktive Begriffe anderer Tenants sollen nicht mit-verbreitert werden.
+    // Payload bewusst OHNE zuletzt/treffer_gesamt/fenster (nichts ueberschreiben:
+    // zuletzt traegt den 1h-Mindestabstand/24h-Cooldown, fenster schreibt der Scraper).
+    const norms = [...new Set(queries.map((q: any) => norm(q.query)))];
     const { data: vorhanden } = await sb
-      .from("scrape_status").select("plattform, query_norm, zuletzt, treffer_gesamt, leer_folge");
+      .from("scrape_status").select("plattform, query_norm, letzte_treffer, leer_folge")
+      .in("query_norm", norms);
     const alt = new Map<string, any>();
     for (const v of vorhanden || []) alt.set(v.plattform + "|" + v.query_norm, v);
-    const zeilen = queries.map((q: any) => {
-      const key = q.plattform + "|" + norm(q.query);
-      const a = alt.get(key);
-      return {
-        plattform: q.plattform,
-        query_norm: norm(q.query),
-        zuletzt: a?.zuletzt || null,
-        treffer_gesamt: a?.treffer_gesamt || 0,
-        leer_folge: Math.max(2, Number(a?.leer_folge || 0)),
-        fenster: "breit",
-      };
-    });
-    const { error } = await sb
-      .from("scrape_status").upsert(zeilen, { onConflict: "plattform,query_norm" });
-    if (error) throw new Error(error.message);
+    const zeilen = queries
+      .map((q: any) => {
+        const key = q.plattform + "|" + norm(q.query);
+        const a = alt.get(key);
+        if (a && Number(a.letzte_treffer || 0) > 0) return null; // produktiv: nicht anfassen
+        return {
+          plattform: q.plattform,
+          query_norm: norm(q.query),
+          leer_folge: Math.max(2, Number(a?.leer_folge || 0)),
+        };
+      })
+      .filter((z: any): z is { plattform: string; query_norm: string; leer_folge: number } => Boolean(z));
+    if (zeilen.length > 0) {
+      const { error } = await sb
+        .from("scrape_status").upsert(zeilen, { onConflict: "plattform,query_norm" });
+      if (error) throw new Error(error.message);
+    }
 
     let gestartet = false;
-    const [angefragt, status] = await Promise.all([laufAngefragt(uid), holeAgentStatus()]);
-    if (!angefragt && !status?.aktiv) {
+    const angefragt = await laufAngefragt(uid);
+    if (!angefragt) {
       await fordereLaufAn(uid);
       gestartet = true;
     }
-    return NextResponse.json({ ok: true, queries: zeilen.length, gestartet, angefragt });
+    return NextResponse.json({ ok: true, queries: zeilen.length, gesamt: queries.length, gestartet, angefragt });
   } catch (e) {
     console.error("[api/suchstatus POST]", e);
     return NextResponse.json({ fehler: "Breiter suchen fehlgeschlagen" }, { status: 500 });

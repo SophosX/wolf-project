@@ -302,6 +302,11 @@ export default function OnboardingSeite() {
         </form>
       )}
 
+      {daten.status === "import_laeuft" && starterHinweis && (
+        <div className="karte" style={{ padding: 12, marginBottom: 12, borderColor: "var(--akzent)" }}>
+          ℹ️ {starterHinweis}
+        </div>
+      )}
       {daten.status === "import_laeuft" && (
         <>
           <div className="karte" style={{ padding: 16 }}>

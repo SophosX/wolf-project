@@ -93,12 +93,14 @@ def fenster_fuer(plattform, status_zeile):
     return "breit" if (nie or leer >= 1) else "normal"
 
 
-def lade_scrape_plan(bevorzugt_user=None):
+def lade_scrape_plan(bevorzugt_user=None, nur_bevorzugt=False):
     """Der Akquise-Plan dieses Laufs: {youtube: [...], tiktok: [...],
     instagram_hashtags: [...], watchlist: [eintraege],
     fenster: {plattform: {query: fenster}}}.
     bevorzugt_user: dessen Queries laufen OHNE Rotations-Cap und ohne den
-    24h-Cooldown ("Jetzt suchen" eines Nutzers muss SEINE Suche ausloesen)."""
+    24h-Cooldown ("Jetzt suchen" eines Nutzers muss SEINE Suche ausloesen).
+    nur_bevorzugt: NUR seine Queries (kein Watchlist-/Fremd-Scrape) — der
+    Auftrags-Pfad (Jetzt suchen, Auto-Nachschub) kostet so nur seine Begriffe."""
     if speicher.daten_modus() != "supabase":
         plan = _lokaler_scrape_plan()
         plan["fenster"] = {}
@@ -127,6 +129,9 @@ def lade_scrape_plan(bevorzugt_user=None):
     }) or []
     limits_je_user = {p_["id"]: plan_limits.limits(p_.get("plan"), p_.get("limits"))
                       for p_ in profile}
+    if bevorzugt_user and bevorzugt_user not in limits_je_user:
+        # Nutzer im Onboarding-Review darf trotzdem "Jetzt suchen"
+        limits_je_user[bevorzugt_user] = plan_limits.limits("free", {})
     zeilen = speicher._supabase_get("suchqueries", {
         "select": "user_id,plattform,query",
         "aktiv": "is.true", "order": "id.asc",
@@ -137,6 +142,8 @@ def lade_scrape_plan(bevorzugt_user=None):
         if uid not in limits_je_user:
             continue  # Nutzer nicht fertig/geloescht
         je_user.setdefault(uid, []).append(z)
+    if nur_bevorzugt and bevorzugt_user:
+        je_user = {bevorzugt_user: je_user.get(bevorzugt_user, [])}
     tag = datetime.datetime.now(datetime.timezone.utc).timetuple().tm_yday
     gesehen = set()
     uebersprungen = 0
@@ -178,7 +185,8 @@ def lade_scrape_plan(bevorzugt_user=None):
 
     # Watchlist-Profile (dedupliziert ueber alle Nutzer) im Format der
     # bisherigen watchlist.json-Eintraege {name, youtube, tiktok, instagram}.
-    wl_zeilen = speicher._supabase_get("scrape_watchlist_aktiv", {"select": "*"}) or []
+    wl_zeilen = ([] if nur_bevorzugt else
+                 speicher._supabase_get("scrape_watchlist_aktiv", {"select": "*"}) or [])
     nach_name = {}
     for z in wl_zeilen:
         name = z.get("name") or z.get("handle") or "?"
@@ -198,7 +206,7 @@ def lade_scrape_plan(bevorzugt_user=None):
     # den Seed-Katalog scrapen — das kostete frueher jedes Mal Geld) oder es
     # gibt noch gar keine Nutzer-Queries (dann Seed).
     if not any((plan["youtube"], plan["tiktok"], plan["instagram_hashtags"])):
-        if not zeilen:
+        if not zeilen and not nur_bevorzugt:
             logger.warning("Scrape-Plan aus DB leer — nutze mythen_katalog als Seed.")
             lokal = _lokaler_scrape_plan()
             lokal["watchlist"] = plan["watchlist"] or lokal["watchlist"]
@@ -232,13 +240,19 @@ def markiere_gescrapte(plattform, queries, protokoll=None, fenster=None):
         norm = query_norm(q)
         if not norm:
             continue
+        if protokoll is not None and norm not in treffer:
+            # Begriff wurde in diesem Lauf gar nicht gesucht (Suche abgeschaltet /
+            # kein Token) — kein Ertragsurteil, kein Cooldown.
+            continue
         a = alt.get(norm) or {}
         n = treffer.get(norm, 0)
         zeile = {"plattform": plattform, "query_norm": norm, "zuletzt": jetzt,
                  "letzte_treffer": n,
                  "treffer_gesamt": int(a.get("treffer_gesamt") or 0) + n,
-                 "fehler_folge": (int(a.get("fehler_folge") or 0) + 1) if norm in fehler else 0,
-                 "fenster": (fenster or {}).get(q) or (fenster or {}).get(norm)}
+                 "fehler_folge": (int(a.get("fehler_folge") or 0) + 1) if norm in fehler else 0}
+        f = (fenster or {}).get(q) or (fenster or {}).get(norm)
+        if f:
+            zeile["fenster"] = f
         if norm in fehler:
             # Gestoerter Lauf ist kein Urteil ueber den Begriff
             zeile["leer_folge"] = int(a.get("leer_folge") or 0)
