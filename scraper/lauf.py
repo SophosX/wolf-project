@@ -709,6 +709,19 @@ def main():
             print("[lauf] FEHLER beim Protokoll-Schreiben (%s): %s" % (quelle, e))
         zusammenfassung.append(protokoll)
 
+    # Tote Suchbegriffe (mehrfach leer trotz weitestem Fenster) automatisch
+    # durch breitere Varianten ersetzen — der Nutzer soll nie stumm leer ausgehen.
+    if akquise:
+        try:
+            import suchhilfe
+            n_ersetzt = suchhilfe.ersetze_tote_queries()
+            if n_ersetzt:
+                print("[lauf] %d ertragslose Suchbegriffe durch breitere Varianten ersetzt" % n_ersetzt)
+                status.schritt("%d Suchbegriffe ohne Treffer durch breitere Varianten ersetzt"
+                               % n_ersetzt, typ="info")
+        except Exception as e:
+            print("[lauf] WARNUNG: Suchhilfe fehlgeschlagen: %s" % e)
+
     # Fast-Dubletten desselben Creators zusammenfassen (nur eins bleibt in der Inbox)
     try:
         dubletten = speicher.markiere_dubletten()

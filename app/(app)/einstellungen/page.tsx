@@ -6,7 +6,24 @@
 import { useCallback, useEffect, useState } from "react";
 
 interface Thema { slug: string; name: string; kerngewicht: number; aktiv: boolean }
-interface Query { id: number; plattform: string; query: string; aktiv: boolean }
+interface Query {
+  id: number; plattform: string; query: string; aktiv: boolean;
+  letzte_treffer?: number; leer_folge?: number; zuletzt?: string | null;
+}
+
+/** "fand zuletzt 6 Videos" / "3× ohne Treffer" — damit der Nutzer sieht, welche
+ *  Begriffe tragen und welche er schärfen oder ersetzen sollte. */
+function Ertrag({ q }: { q: Query }) {
+  if (!q.zuletzt) return <span className="query-ertrag">noch nicht gesucht</span>;
+  if ((q.letzte_treffer || 0) > 0)
+    return <span className="query-ertrag gut">{q.letzte_treffer} Treffer zuletzt</span>;
+  const n = q.leer_folge || 1;
+  return (
+    <span className={"query-ertrag" + (n >= 3 ? " tot" : "")}>
+      {n}× ohne Treffer{n >= 3 ? " — ersetzen?" : ""}
+    </span>
+  );
+}
 interface Person { id: number; name: string; plattform: string | null; handle: string | null; folgt: boolean }
 interface Trigger { trigger: string; staerke?: number; quelle?: string }
 interface InteressenChip { slug: string; label: string; emoji: string; gewaehlt: boolean }
@@ -263,7 +280,9 @@ export default function EinstellungenSeite() {
         <div className="abschnitt-titel">Suchanfragen ({daten.queries.length})</div>
         <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
           Claim-formulierte Suchen, mit denen dein Radar YouTube/TikTok/Instagram
-          durchkämmt. Zum Löschen markieren, dann speichern.
+          durchkämmt. Zum Löschen markieren, dann speichern. Begriffe ohne Treffer
+          sucht der Radar automatisch breiter (größerer Zeitraum, mehr Ergebnisse)
+          und ersetzt sie nach drei leeren Läufen durch eine breitere Variante.
         </p>
         {daten.queries.map((q) => (
           <label key={q.id} style={{ display: "block", padding: "1px 0" }}>
@@ -279,6 +298,7 @@ export default function EinstellungenSeite() {
               }
             />{" "}
             <span style={{ color: "var(--text-dim)" }}>[{q.plattform}]</span> {q.query}
+            <Ertrag q={q} />
           </label>
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>

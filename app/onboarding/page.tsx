@@ -73,6 +73,7 @@ export default function OnboardingSeite() {
   const [marke, setMarke] = useState("");
   const [fokus, setFokus] = useState("");
   const [labels, setLabels] = useState<string[]>([]);
+  const [starterHinweis, setStarterHinweis] = useState<string | null>(null);
   const [ohneKanal, setOhneKanal] = useState(false);
 
   // Schritt 3
@@ -127,10 +128,28 @@ export default function OnboardingSeite() {
       });
       const d = await res.json();
       if (!res.ok) setFehler(d.fehler || "Start fehlgeschlagen.");
-      else await lade();
+      else {
+        setStarterHinweis(starterText(d.starter));
+        await lade();
+      }
     } finally {
       setLaeuft(false);
     }
+  }
+
+  /** Plan-Cap transparent machen: was NICHT übernommen wurde (statt still zu verschwinden). */
+  function starterText(s: {
+    themen_neu: number; themen_verworfen: number; queries_neu: number; queries_verworfen: number;
+    bereiche_ohne_thema: string[]; limits: { themen: number; suchqueries: number };
+  } | null | undefined): string | null {
+    if (!s) return null;
+    if (s.themen_verworfen === 0 && s.queries_verworfen === 0) return null;
+    const teile = [];
+    if (s.themen_verworfen > 0) teile.push(`${s.themen_verworfen} Themen`);
+    if (s.queries_verworfen > 0) teile.push(`${s.queries_verworfen} Suchanfragen`);
+    return `Dein Plan erlaubt ${s.limits.themen} Themen und ${s.limits.suchqueries} Suchanfragen — ` +
+      `wir haben aus jedem gewählten Bereich die wichtigsten genommen (${teile.join(" und ")} ` +
+      `nicht übernommen). Unter „Profil“ kannst du jederzeit tauschen.`;
   }
 
   function toggleLabel(slug: string) {
@@ -312,6 +331,11 @@ export default function OnboardingSeite() {
 
       {daten.status === "review" && (
         <>
+          {starterHinweis && (
+            <div className="karte" style={{ padding: 12, marginBottom: 12, borderColor: "var(--akzent)" }}>
+              ℹ️ {starterHinweis}
+            </div>
+          )}
           <div className="karte" style={{ padding: 16 }}>
             <div className="abschnitt-titel">Wir haben deine Videos gelesen — stimmt das so?</div>
             <p style={{ color: "var(--text-dim)", fontSize: 14 }}>

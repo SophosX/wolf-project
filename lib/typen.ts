@@ -92,6 +92,9 @@ export interface AgentRun {
   dauer_s: number;
   // Pro-Suchbegriff-Aufschlüsselung (nur YouTube-Apify-Suche)
   such_protokoll?: SuchProtokollEintrag[];
+  // Kuration: Diagnose-Zähler (pool, kandidaten, gematcht, gate_verworfen, bewertet, korrekt, geflaggt …)
+  detail?: Record<string, number>;
+  typ?: string;
 }
 
 /** Live-Status eines Scraper-Laufs (scraper/status.py → daten/agent_status.json) */

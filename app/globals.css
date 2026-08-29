@@ -680,3 +680,24 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--akzent); ou
   .landing-schritte, .landing-features, .landing-produkt { grid-template-columns: 1fr; }
   .landing-hero { padding: 54px 6px 40px; }
 }
+
+/* ---- Inbox-Diagnose ("Warum ist hier nichts?") ---- */
+.diagnose { padding: 14px 16px; margin-bottom: 12px; }
+.diagnose.kompakt {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; font-size: 13px; border: 1px dashed var(--linie); border-radius: 10px;
+}
+.diagnose-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.diagnose-status { margin: 8px 0 0; line-height: 1.5; }
+.diagnose-status .puls { margin-right: 6px; }
+.diagnose-aktion { margin-top: 12px; border-top: 1px solid var(--linie); padding-top: 10px; }
+.diagnose-aktion p { margin: 0 0 8px; line-height: 1.5; }
+.diagnose-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.diagnose-knoepfe a.btn { text-decoration: none; }
+.diagnose-meldung { margin: 8px 0 0; color: var(--gruen); font-size: 13px; }
+.btn.klein { padding: 3px 9px; font-size: 12px; }
+.such-chip.tot { border-color: rgba(255, 90, 90, 0.5); }
+.such-chip.tot .such-chip-n { background: rgba(255, 90, 90, 0.25); }
+.query-ertrag { font-size: 12px; margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: var(--linie); color: var(--text-dim); }
+.query-ertrag.gut { background: rgba(80, 200, 120, 0.2); color: var(--gruen); }
+.query-ertrag.tot { background: rgba(255, 90, 90, 0.2); color: #ff8a8a; }
