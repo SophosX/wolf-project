@@ -66,7 +66,9 @@ def main():
     themenwelt.vernetze_pool_kandidaten(mit_claim)
     n = 0
     for v in mit_claim:
-        felder = {"claim": v.get("claim"), "kategorie": v.get("kategorie")}
+        # aktualisiert_am: die Kuration betrachtet auch spaeter extrahierte Claims
+        felder = {"claim": v.get("claim"), "kategorie": v.get("kategorie"),
+                  "aktualisiert_am": speicher.jetzt_iso()}
         if v.get("claim_embedding"):
             felder["claim_embedding"] = v["claim_embedding"]
         if speicher._supabase_patch_video(v["id"], felder):
