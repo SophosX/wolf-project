@@ -543,7 +543,7 @@ def _stufe_ab(kandidaten, themen_slugs, nische=None, neutral=False):
 _SCHEMA_VERDICT = {
     "type": "OBJECT",
     "properties": {
-        "verdict": {"type": "STRING", "enum": ["klar_falsch", "strittig", "korrekt"]},
+        "verdict": {"type": "STRING", "enum": ["klar_falsch", "irrefuehrend", "strittig", "korrekt"]},
         "konfidenz": {"type": "NUMBER", "description": "0 bis 1"},
         "begruendung": {"type": "STRING", "description": "genau ein Satz"},
         "schadenspotential": {"type": "INTEGER", "description": "1 (harmlos) bis 5 (gefährlich)"},
@@ -563,8 +563,8 @@ der Falschinformationen aus seiner Nische richtigstellt. Du bewertest, ob die ex
 Aussage eines Videos eine klare Falschinformation ist, gegen die der Creator ein
 Reaktionsvideo machen würde.
 
-DIE BELEGTEN POSITIONEN DES CREATORS (verbindlicher Maßstab — nur was hier gedeckt ist,
-darf 'klar_falsch' werden):
+DER MASSSTAB DES CREATORS (Positionen, Nische, worauf er reagiert — verbindlich: nur
+was hierzu passt, darf 'klar_falsch' oder 'irrefuehrend' werden):
 
 """ + positions_tabelle + """
 
@@ -574,10 +574,21 @@ seinen Positionen gedeckt ist — sie ersetzen aber NICHT die wissenschaftliche 
 
 BEWERTUNGSREGELN (streng konservativ):
 1. verdict = "klar_falsch" NUR, wenn die Aussage wissenschaftlich EINDEUTIG WIDERLEGT ist
-   UND von Chris' Positionen oben gedeckt wird. Im Zweifel NIE klar_falsch.
+   UND zum Maßstab des Creators oben passt. Im Zweifel NIE klar_falsch.
    Achtung Unterschied: 'nicht belegt' ist NICHT dasselbe wie 'widerlegt' — eine bloß
-   unbelegte oder übertriebene Behauptung ist strittig, nicht klar_falsch.
-2. verdict = "strittig", wenn die Evidenz gemischt/unklar ist ('kann sein, muss aber nicht').
+   unbelegte oder übertriebene Behauptung ist NICHT klar_falsch (sondern irrefuehrend oder strittig).
+1b. verdict = "irrefuehrend", wenn die Aussage zwar nicht eindeutig widerlegt, aber als
+   BOTSCHAFT irreführend ist und der Creator sie nach seinem Maßstab richtigstellen würde:
+   unbelegte Heils-/Erfolgs-/Rendite-Versprechen ('heilt', 'garantiert', 'sofort', 'nie wieder',
+   '9 von 10 OPs überflüssig'), absolute Überlegenheits- oder Alleinursachen-Ansprüche ohne
+   Evidenz ('DIE Ursache', 'die wirksamste Methode'), Ferndiagnosen und Diagnose-Checklisten
+   ohne fachliche Grundlage, Aussagen, die Betroffene von wirksamer Behandlung/Vorsorge
+   abhalten oder Angst ohne Datenlage schüren. Das ist reaktionswürdiges Material — der
+   Creator ordnet es ein, statt es zu 'widerlegen'. konfidenz = wie sicher du bist, dass die
+   Botschaft irreführend ist.
+2. verdict = "strittig", wenn die Evidenz gemischt/unklar ist ('kann sein, muss aber nicht')
+   und die Aussage ehrlich abwägt oder als Meinung erkennbar ist — NICHT für Versprechen,
+   die Sicherheit vortäuschen (→ irrefuehrend).
    Insbesondere: Überlegenheits-Vergleiche von Diät-Methoden ('X ist besser als Y', z.B.
    Intervallfasten vs. klassische Diät, Low Carb vs. Low Fat) sind IMMER strittig, denn bei
    gleichem Kaloriendefizit zeigen Metaanalysen Gleichwertigkeit — die behauptete Überlegenheit
@@ -654,10 +665,10 @@ def _stufe_c(video, aussage, positions_tabelle, o_ton=None, narrativ_fn=None):
     # Werte härten
     daten["konfidenz"] = max(0.0, min(1.0, float(daten.get("konfidenz", 0.0))))
     daten["schadenspotential"] = int(max(1, min(5, int(daten.get("schadenspotential", 1)))))
-    if daten.get("verdict") not in ("klar_falsch", "strittig", "korrekt"):
+    if daten.get("verdict") not in ("klar_falsch", "irrefuehrend", "strittig", "korrekt"):
         raise RuntimeError("Ungültiges Verdict: " + str(daten.get("verdict")))
-    # Sicherheitsnetz: Debunk kann nie klar_falsch sein
-    if daten.get("ist_debunk") and daten["verdict"] == "klar_falsch":
+    # Sicherheitsnetz: Debunk kann nie klar_falsch/irrefuehrend sein
+    if daten.get("ist_debunk") and daten["verdict"] in ("klar_falsch", "irrefuehrend"):
         logger.info("Debunk-Sicherheitsnetz greift für %s — Verdict auf korrekt gesetzt.",
                     video.get("id"))
         daten["verdict"] = "korrekt"
@@ -1094,22 +1105,27 @@ def bewerte_kandidat(video, aussage, thema, gelernt, themen, positions_tabelle,
     # "klar_falsch" in der Inbox.
     kein_transkript = not (video.get("transkript") or "").strip()
     kurzvideo = video.get("plattform") in ("tiktok", "instagram")
-    if verdict == "klar_falsch" and konfidenz >= 0.75 and kein_transkript and kurzvideo:
-        logger.info("%s: klar_falsch, aber ohne Transkript (nur Titel/Caption) "
-                    "→ strittig (konservativ).", vid)
+    flagwuerdig = verdict in ("klar_falsch", "irrefuehrend")
+    if flagwuerdig and konfidenz >= 0.75 and kein_transkript and kurzvideo:
+        logger.info("%s: %s, aber ohne Transkript (nur Titel/Caption) "
+                    "→ strittig (konservativ).", vid, verdict)
         verdict = "strittig"
         konfidenz = min(konfidenz, 0.74)
         verdict_daten["begruendung"] = (
             "[ohne Transkript – nur nach Titel/Caption bewertet] "
             + verdict_daten.get("begruendung", ""))
+        flagwuerdig = False
 
-    # Status nach Kontrakt: klar_falsch + Konfidenz >= 0.75 → inbox; sonst strittig
-    if verdict == "klar_falsch" and konfidenz >= 0.75:
+    # Status nach Kontrakt: klar_falsch ODER irrefuehrend + Konfidenz >= 0.75 → inbox;
+    # sonst strittig. ('irrefuehrend' seit 2026-08-29: unbelegte Heilsversprechen,
+    # Ferndiagnosen, absolute Ansprüche — reaktionswürdiges Material, das vorher
+    # als 'strittig' in der Nebenliste versauerte.)
+    if flagwuerdig and konfidenz >= 0.75:
         status = "inbox"
     else:
-        if verdict == "klar_falsch":
-            logger.info("%s: klar_falsch, aber Konfidenz %.2f < 0.75 → strittig (konservativ).",
-                        vid, konfidenz)
+        if flagwuerdig:
+            logger.info("%s: %s, aber Konfidenz %.2f < 0.75 → strittig (konservativ).",
+                        vid, verdict, konfidenz)
             verdict = "strittig"
         status = "strittig"
 

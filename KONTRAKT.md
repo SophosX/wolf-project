@@ -52,7 +52,9 @@ wolf-radar/                  # = GitHub-Repo, Next.js-App im Root
   "scores": { "reichweite": 90, "relevanz": 88, "tauglichkeit": 80 },
   "claim": {
     "aussage": "wörtliches Zitat der Falschaussage",
-    "verdict": "klar_falsch",           // klar_falsch | strittig | korrekt (korrekt wird gar nicht gespeichert)
+    "verdict": "klar_falsch",           // klar_falsch | irrefuehrend | strittig | korrekt (korrekt wird gar nicht gespeichert)
+                                        // irrefuehrend (seit 2026-08-29): nicht widerlegt, aber als Botschaft irreführend
+                                        // (unbelegtes Heilsversprechen, Ferndiagnose, absoluter Anspruch) -> inbox ab 0.75
     "konfidenz": 0.93,
     "begruendung": "Ein Satz, warum falsch.",
     "thema": "suessstoffe",             // slug aus mythen_katalog.THEMEN

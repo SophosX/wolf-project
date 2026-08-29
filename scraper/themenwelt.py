@@ -324,6 +324,41 @@ def wissensbasis_aus_profil(profil, watchlist_personen):
     }
 
 
+def massstab_text(user_id, profil, themen):
+    """Der Bewertungs-Massstab fuer Stufe C — PRO NUTZER aus seinem Profil:
+    belegte Positionen (falls vorhanden), Nische, Trigger-Liste ("worauf er
+    reagiert"), Themen. Vorher fiel ein Nutzer ohne eigene Positionen auf
+    Christians Ernaehrungs-Themenlandkarte zurueck -> Medizin-/Psychologie-
+    Claims waren dort 'nicht gedeckt' und wurden pauschal 'strittig'.
+    Der Standard-Tenant (RADAR_STANDARD_USER) behaelt seine kuratierte Datei-Tabelle."""
+    import analyse
+    profil = profil or {}
+    bloecke = []
+    pos = analyse.positionen_als_text(profil.get("positionen"))
+    if pos:
+        bloecke.append(pos)
+    elif str(user_id) == (os.environ.get("RADAR_STANDARD_USER") or "").strip():
+        bloecke.append(analyse.lade_positions_tabelle())
+    else:
+        bloecke.append("Belegte Einzelpositionen: keine dokumentiert — Maßstab ist der "
+                       "wissenschaftliche Konsens in der Nische des Creators.")
+    nische = (profil.get("nische") or "").strip()
+    if nische:
+        bloecke.append("NISCHE DES CREATORS: " + nische)
+    trigger = [t.get("trigger") for t in (profil.get("reaktions_ausloeser") or [])
+               if isinstance(t, dict) and t.get("trigger")]
+    if trigger:
+        bloecke.append("WORAUF DER CREATOR REAGIERT (seine Trigger — Aussagen dieser Art sind "
+                       "reaktionswürdig):\n" + "\n".join("- %s" % t for t in trigger[:20]))
+    if themen:
+        zeilen = []
+        for slug, t in sorted(themen.items(), key=lambda kv: -float(kv[1].get("kerngewicht") or 0)):
+            kws = ", ".join((t.get("keywords") or [])[:6])
+            zeilen.append("- %s%s" % (t.get("name") or slug, (" (%s)" % kws) if kws else ""))
+        bloecke.append("SEINE THEMEN:\n" + "\n".join(zeilen[:25]))
+    return "\n\n".join(bloecke)
+
+
 def lade_nutzer():
     """Aktive Nutzer inkl. allem, was die Kuration braucht.
     Lokal-Modus: EIN Pseudo-Nutzer 'lokal' (Christian-Dateien als Fallbacks

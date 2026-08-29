@@ -10,7 +10,7 @@ export type Status =
   | "strittig"
   | "archiv";
 
-export type Verdict = "klar_falsch" | "strittig" | "korrekt";
+export type Verdict = "klar_falsch" | "irrefuehrend" | "strittig" | "korrekt";
 
 export interface Claim {
   aussage: string; // wörtliches Zitat der Falschaussage

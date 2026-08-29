@@ -133,9 +133,11 @@ export default function VideoKarte({ video, seite, onAktion }: Props) {
                     <b>
                       {video.claim.verdict === "klar_falsch"
                         ? "Warum falsch:"
-                        : video.claim.verdict === "strittig"
-                          ? "Warum strittig:"
-                          : "Einordnung:"}
+                        : video.claim.verdict === "irrefuehrend"
+                          ? "Warum irreführend:"
+                          : video.claim.verdict === "strittig"
+                            ? "Warum strittig:"
+                            : "Einordnung:"}
                     </b>{" "}
                     {video.claim.begruendung}
                   </p>
