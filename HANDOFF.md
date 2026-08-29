@@ -1,5 +1,59 @@
 # Wolf Radar — Handoff / Stand & Betrieb
 
+**Stand: 2026-08-29 — QA-Session „kaum Videos für neuen Account“ (siehe Session-Log unten).**
+Branch `feat/multi-tenant`, deployed. Vorheriger Stand (2026-07-11 Cutover) darunter unverändert.
+
+## Session 2026-08-29 — QA „neuer Account findet kaum Videos“ (Peter, free, Medizin/Psychologie/Klima/Beauty)
+
+**Ursachen (verifiziert):**
+1. **Pool war nicht mandantenneutral (Kernfehler):** `lauf.py` rief `analyse.extrahiere_claims()`
+   ohne Themen/Nische → Fallback auf Christians `mythen_katalog` + Nische „Ernährung…“. Jedes
+   Nicht-Ernährungs-Video wurde in Stufe A/B „aussortiert“ (aussage=null) und konnte NIE in
+   eine fremde Inbox. DB-Beleg: `claim->>'thema'` war zu 100 % ein Christian-Slug.
+2. **Kuration:** aussortierte Videos zählten als Kandidaten, belegten per Keyword die Top-K und
+   wurden dann still übersprungen („bewertet werden=10, 0 zugeordnet in 1 s“).
+3. **Relevanz-Gate** maß nur gegen das Keyword-Thema (0.66) → 39/42 passende Kandidaten verworfen.
+4. **Kurations-Fenster „seit letztem Lauf“** → Warteschlange/knapp Gescheiterte kamen nie wieder dran.
+5. **Free-Cap** (6 Themen/12 Queries) first-come → 4. Bereich (Klima) still komplett weg.
+6. **Suchbreite:** YT `dateFilter=today`+5 Results, TikTok 5 Results+90 T → winzige Ausbeute;
+   `scrape_status.treffer_gesamt` wurde nie geschrieben (keine Ertragsdaten).
+7. **„Jetzt suchen“** eines Nutzers lief ohne seine Queries (24h-Cooldown/Rotation).
+8. Katalog-Query „Krankheit XY …“ war wörtlich „XY“.
+
+**Fixes (Commits e7c7030 … 19bf08f):**
+- Stufe A/B neutral: Kategorien = `interessen_katalog`-Bereiche (+`sonstiges`), Nische = alle
+  Bereiche + Nutzer-Nischen (`themenwelt.pool_kategorien/pool_nische_text`,
+  `analyse._system_stufe_ab_neutral`, `extrahiere_claims(neutral=True)`); `videos.kategorie`
+  kommt jetzt aus dem LLM-Bereich. `scraper/backfill_neutral.py` hat 56/77 aussortierte Videos
+  der letzten 14 Tage nachextrahiert.
+- Kuration: nur Kandidaten mit Aussage; Gate gegen ALLE Themen (ähnlichstes wird zugeordnet);
+  Schwellen: eigene Bereiche 0.60 (`RADAR_MATCH_MIN_AEHNLICHKEIT_EIGEN`), sonst 0.66, fachfremd
+  0.68; festes Fenster `RADAR_KURATION_FENSTER_TAGE=14`; Diagnose in `agent_runs.detail`.
+- Ertrag je Suchbegriff: `scrape_status.letzte_treffer/leer_folge/fenster` (Migration in
+  `supabase_schema_v2.sql`, auf dem Server ausgeführt). Adaptive Breite `themenwelt.fenster_fuer`:
+  neue Query → month/breit; 1× leer → month; ≥2× leer → year/breit. YT-Basis `week` (Kosten
+  identisch, maxResults deckelt). TikTok/IG „breit“ = 15 Results + 365 Tage (2. Actor-Call).
+- `lauf.py --user <uuid>` (Worker gibt es durch): Queries des Anfragenden ohne Rotation/Cooldown
+  (min. `RADAR_BEVORZUGT_MIN_H=1`). Cooldown-Leerlauf scrapt nicht mehr den Seed-Katalog.
+- `scraper/suchhilfe.py`: Begriffe mit ≥3 leeren Läufen (trotz weitestem Fenster) werden per
+  Gemini durch eine plattformtypische breitere Variante ersetzt (alt aktiv=false, neu quelle=lerner),
+  Hinweis in `einstellungen.such_hinweise`; läuft am Ende jedes Akquise-Laufs.
+- UI: `/api/suchstatus` (GET Diagnose, POST `{aktion:"breiter"}`), `components/InboxDiagnose.tsx`
+  (Inbox <3 Karten: welche Begriffe fanden was, was die Prüfung ergab, Empfehlung
+  warten/breiter/spezifizieren, Buttons „Jetzt breiter suchen“/„Suchbegriffe anpassen“/„Interessen
+  erweitern“, Hinweis auf strittige Funde). `/einstellungen` zeigt Ertrag je Query. Onboarding
+  legt Starter-Pack reihum über Bereiche an und meldet Plan-Cap-Verluste im Review.
+
+**Ergebnis Peter:** vorher 1 Zuordnung (archiv). Jetzt 11 strittig + 7 archiv (0 inbox, weil
+Stufe C bei Kurzvideos ohne Transkript/Konfidenz <0.75 konservativ „strittig“ vergibt — Diagnose
+verweist auf den Strittig-Tab).
+
+**Offen / beobachten:**
+- Apify-Kosten nach den breiteren Fenstern 2–3 Tage beobachten (`GET api.apify.com/v2/users/me/limits`),
+  Ziel <1 $/Tag; Stellschrauben `RADAR_YT_APIFY_BREIT_RESULTS`, `RADAR_TIKTOK_APIFY_BREIT_MAX`.
+- Erste automatische Query-Ersetzungen (suchhilfe) stichprobenartig prüfen (Log `[suchhilfe]`).
+- Ob „strittig“ für Neu-Nutzer sichtbar genug ist (Inbox bleibt leer, solange nichts ≥0.75).
+
 **Stand: 2026-07-11 ~20:00 UTC — MULTI-TENANT-CUTOVER DURCHGEFÜHRT.**
 Branch `feat/multi-tenant` ist deployed; Datenhaltung läuft auf lokal gehostetem
 Supabase. Der komplette Plan/Verlauf steht in den Commit-Messages (Phasen 0-6).
