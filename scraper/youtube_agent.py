@@ -528,7 +528,7 @@ def hole_transkripte(kandidaten, fehler, min_views=TRANSKRIPT_MIN_VIEWS,
     return erfolgreich
 
 
-def sammle(watchlist_eintraege, extra_queries=None, queries=None):
+def sammle(watchlist_eintraege, extra_queries=None, queries=None, fenster=None):
     """
     Haupteinstieg fuer lauf.py.
     extra_queries: Zusatz-Queries aus Vorschlaegen des Nutzers.
@@ -553,7 +553,8 @@ def sammle(watchlist_eintraege, extra_queries=None, queries=None):
             queries = extras + [q for q in basis if q not in extras]
             if extras:
                 print("[youtube] Vorschlags-Queries (additiv): %s" % ", ".join(extras))
-            such_kand, such_protokoll = apify_agent.sammle_youtube_suche(queries, fehler)
+            such_kand, such_protokoll = apify_agent.sammle_youtube_suche(
+                queries, fehler, fenster=fenster)
             kandidaten.extend(such_kand)
             spitze = ", ".join("„%s“" % p["query"] for p in such_protokoll[:3])
             status.schritt(

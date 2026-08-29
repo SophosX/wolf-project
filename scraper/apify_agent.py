@@ -40,12 +40,21 @@ YT_SUCHE_ACTOR = os.environ.get("APIFY_YT_SUCHE_ACTOR", "streamers~youtube-scrap
 YT_SUCHE_MAX_RESULTS = int(os.environ.get("RADAR_YT_APIFY_MAX_RESULTS", "10"))
 YT_SUCHE_MAX_SHORTS = int(os.environ.get("RADAR_YT_APIFY_MAX_SHORTS",
                                          str(YT_SUCHE_MAX_RESULTS)))
-YT_SUCHE_DATEFILTER = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "today").strip() or "today"
+# Basis-Fenster week (nicht today): mit maxResults-Deckel kostet ein weiteres
+# Fenster nichts extra, liefert aber fuer kleine Nischen ueberhaupt Treffer.
+YT_SUCHE_DATEFILTER = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "week").strip() or "week"
+# "Breite" Suche (neue/ertragslose Queries): mehr Ergebnisse je Begriff
+YT_SUCHE_BREIT_RESULTS = int(os.environ.get("RADAR_YT_APIFY_BREIT_RESULTS", "10"))
 # TikTok-Keyword-Suche (Apify clockworks) + Instagram-Hashtag-Suche — geben
 # TikTok/IG dieselbe breite Abdeckung wie die YouTube-Suche (nicht nur Watchlist).
 TIKTOK_SUCHE_ACTOR = os.environ.get("APIFY_TIKTOK_ACTOR", "clockworks~tiktok-scraper")
 TIKTOK_SUCHE_MAX = int(os.environ.get("RADAR_TIKTOK_APIFY_MAX", "8"))      # Videos je Suchbegriff
 IG_HASHTAG_MAX = int(os.environ.get("RADAR_IG_HASHTAG_MAX", "10"))        # Posts je Hashtag
+# Breite Suche (neue/ertragslose Begriffe): mehr Ergebnisse + weiteres Alter
+TIKTOK_BREIT_MAX = int(os.environ.get("RADAR_TIKTOK_APIFY_BREIT_MAX", "15"))
+TIKTOK_BREIT_ALTER_TAGE = int(os.environ.get("RADAR_TIKTOK_BREIT_ALTER_TAGE", "365") or "0")
+IG_BREIT_MAX = int(os.environ.get("RADAR_IG_HASHTAG_BREIT_MAX", "15"))
+IG_BREIT_ALTER_TAGE = int(os.environ.get("RADAR_IG_BREIT_ALTER_TAGE", "365") or "0")
 # Alters-Obergrenze fuer die breite Keyword/Hashtag-Suche (TikTok/IG). Die clockworks-
 # Keyword-Suche liefert sonst reichweitenstarke, aber JAHRE alte Videos — Christian
 # braucht Aktuelles. 0/leer = aus. Wirkt zweifach: als Actor-Input (spart Apify-Kosten)
@@ -239,7 +248,7 @@ def _sammle_profile(profil_handles, handle_zu_name, limit, quelle, kandidaten, f
                               % (h, handle_zu_name.get(h, "?")))
 
 
-def sammle_instagram(watchlist, limit_pro_profil=15, hashtags=None):
+def sammle_instagram(watchlist, limit_pro_profil=15, hashtags=None, fenster=None):
     """
     Instagram über den Apify-Scraper einsammeln:
     (a) Watchlist-Profile (voll, mit Abdeckungs-Check),
@@ -259,7 +268,7 @@ def sammle_instagram(watchlist, limit_pro_profil=15, hashtags=None):
             if hashtags is None:
                 from mythen_katalog import SOCIAL_HASHTAGS
                 hashtags = SOCIAL_HASHTAGS
-            hkand, such_protokoll = sammle_instagram_hashtags(hashtags, fehler)
+            hkand, such_protokoll = sammle_instagram_hashtags(hashtags, fehler, fenster=fenster)
             kandidaten.extend(hkand)
         except Exception as e:
             fehler.append("apify instagram-hashtags: %s" % e)
@@ -499,12 +508,16 @@ YT_SUCHE_BATCH = int(os.environ.get("RADAR_YT_APIFY_BATCH", "10"))
 YT_SUCHE_TIMEOUT_S = int(os.environ.get("RADAR_YT_APIFY_TIMEOUT_S", "540"))
 
 
-def sammle_youtube_suche(queries, fehler):
+def sammle_youtube_suche(queries, fehler, fenster=None):
     """
     YouTube-Claim-Suche über den Apify-Scraper (kein Data-API-Quota-Limit mehr →
     ALLE Begriffe pro Lauf). Der Actor liefert jedes Item mit `input` (Suchbegriff),
     daher ein Lauf pro Batch statt pro Begriff. Ergebnisse werden je Begriff
     protokolliert (Transparenz-Anforderung: "was hat jede Suche ergeben").
+
+    fenster: optional {query: dateFilter} (today/week/month/year) — adaptive
+    Suchbreite aus themenwelt.fenster_fuer; Queries werden je Fenster gebündelt.
+    Breite Fenster (month/year) bekommen YT_SUCHE_BREIT_RESULTS je Begriff.
 
     Rückgabe: (kandidaten, protokoll)
       protokoll: [{"query": q, "gefunden": n, "fehler": bool}] je Suchbegriff,
@@ -522,41 +535,52 @@ def sammle_youtube_suche(queries, fehler):
         # `input` ist der Suchbegriff, dem dieses Item entstammt
         return it.get("input")
 
-    for i in range(0, len(queries), YT_SUCHE_BATCH):
-        batch = queries[i:i + YT_SUCHE_BATCH]
-        eingabe = {
-            "searchQueries": batch,
-            "maxResults": YT_SUCHE_MAX_RESULTS,
-            "maxResultsShorts": YT_SUCHE_MAX_SHORTS,
-            "sortingOrder": "date",       # neueste zuerst
-            "dateFilter": YT_SUCHE_DATEFILTER,
-        }
-        try:
-            items = _run_sync(YT_SUCHE_ACTOR, eingabe, timeout=YT_SUCHE_TIMEOUT_S)
-        except Exception as e:
-            fehler.append("apify youtube-suche (Batch %d: %s): %s"
-                          % (i // YT_SUCHE_BATCH + 1, ", ".join(batch), e))
-            for q in batch:
-                protokoll[q]["fehler"] = True
-            continue
-        for it in items or []:
-            q = _query_zu_kand(it)
-            eintrag = protokoll.get(q)
-            if it.get("error"):          # z. B. NO_VIDEOS für diesen Begriff
-                continue
-            try:
-                kand = _yt_such_item_zu_kandidat(it, q)
-            except Exception as e:
-                fehler.append("apify youtube-such-item: %s" % e)
-                continue
-            if kand is None:
-                continue
-            kandidaten.append(kand)
-            if eintrag is not None:
-                eintrag["gefunden"] += 1
+    gruppen = {}
+    for q in queries:
+        f = (fenster or {}).get(q) or YT_SUCHE_DATEFILTER
+        gruppen.setdefault(f, []).append(q)
 
-    print("[apify] YouTube-Suche: %d Begriffe in %d Batch(es), %d Roh-Treffer"
-          % (len(queries), (len(queries) + YT_SUCHE_BATCH - 1) // max(1, YT_SUCHE_BATCH),
+    batches = 0
+    for f, gruppe in gruppen.items():
+        breit = f in ("month", "year")
+        max_results = max(YT_SUCHE_MAX_RESULTS, YT_SUCHE_BREIT_RESULTS) if breit else YT_SUCHE_MAX_RESULTS
+        for i in range(0, len(gruppe), YT_SUCHE_BATCH):
+            batch = gruppe[i:i + YT_SUCHE_BATCH]
+            batches += 1
+            eingabe = {
+                "searchQueries": batch,
+                "maxResults": max_results,
+                "maxResultsShorts": max(YT_SUCHE_MAX_SHORTS, max_results) if breit else YT_SUCHE_MAX_SHORTS,
+                "sortingOrder": "date",       # neueste zuerst
+                "dateFilter": f,
+            }
+            try:
+                items = _run_sync(YT_SUCHE_ACTOR, eingabe, timeout=YT_SUCHE_TIMEOUT_S)
+            except Exception as e:
+                fehler.append("apify youtube-suche (Batch %d [%s]: %s): %s"
+                              % (batches, f, ", ".join(batch), e))
+                for q in batch:
+                    protokoll[q]["fehler"] = True
+                continue
+            for it in items or []:
+                q = _query_zu_kand(it)
+                eintrag = protokoll.get(q)
+                if it.get("error"):          # z. B. NO_VIDEOS für diesen Begriff
+                    continue
+                try:
+                    kand = _yt_such_item_zu_kandidat(it, q)
+                except Exception as e:
+                    fehler.append("apify youtube-such-item: %s" % e)
+                    continue
+                if kand is None:
+                    continue
+                kandidaten.append(kand)
+                if eintrag is not None:
+                    eintrag["gefunden"] += 1
+
+    print("[apify] YouTube-Suche: %d Begriffe in %d Batch(es) (%s), %d Roh-Treffer"
+          % (len(queries), batches,
+             ", ".join("%s=%d" % (f, len(g)) for f, g in gruppen.items()) or "-",
              len(kandidaten)))
     return kandidaten, list(protokoll.values())
 
@@ -613,24 +637,12 @@ def _tiktok_such_item_zu_kandidat(it):
     }
 
 
-def sammle_tiktok_suche(queries, fehler):
-    """
-    TikTok-Keyword-Suche über den Apify-Actor (clockworks). Findet Ernährungs-
-    Falschinfos von BELIEBIGEN Creators, nicht nur den Watchlist-Profilen.
-    Rückgabe: (kandidaten, protokoll[{query, gefunden, fehler}]).
-    """
-    kandidaten = []
-    queries = [q for q in queries if q]
-    protokoll = {q: {"query": q, "gefunden": 0, "fehler": False} for q in queries}
-    if not verfuegbar() or not queries:
-        if not verfuegbar():
-            fehler.append("apify tiktok-suche: kein APIFY_TOKEN")
-        return kandidaten, list(protokoll.values())
-
-    # Ein Lauf für alle Begriffe; jedes Item trägt searchQuery = Herkunfts-Begriff.
+def _tiktok_suche_call(queries, results_pro_begriff, max_alter_tage, fehler, protokoll, kandidaten):
+    """EIN clockworks-Lauf für eine Query-Gruppe; füllt protokoll/kandidaten.
+    Rückgabe: Anzahl 'zu alt' verworfener Treffer."""
     eingabe = {
         "searchQueries": queries,
-        "resultsPerPage": TIKTOK_SUCHE_MAX,
+        "resultsPerPage": results_pro_begriff,
         "shouldDownloadVideos": False,
         "shouldDownloadCovers": False,
         # Untertitel-LINKS mitliefern (kein Video-Download) — deutsche Auto-Captions
@@ -638,7 +650,7 @@ def sammle_tiktok_suche(queries, fehler):
         "shouldDownloadSubtitles": True,
         "proxyCountryCode": "DE",
     }
-    grenze = _alter_grenze_datum(TIKTOK_MAX_ALTER_TAGE)
+    grenze = _alter_grenze_datum(max_alter_tage)
     if grenze:
         # Nur Videos ab Stichtag. Der Nachfilter unten erzwingt es zusaetzlich,
         # falls der Actor diesen Input ignoriert.
@@ -649,8 +661,7 @@ def sammle_tiktok_suche(queries, fehler):
         fehler.append("apify tiktok-suche: %s" % e)
         for q in queries:
             protokoll[q]["fehler"] = True
-        return kandidaten, list(protokoll.values())
-
+        return 0
     zu_alt = 0
     for it in items or []:
         try:
@@ -660,22 +671,52 @@ def sammle_tiktok_suche(queries, fehler):
             continue
         if kand is None:
             continue
-        if not _juenger_als(kand.get("veroeffentlicht"), TIKTOK_MAX_ALTER_TAGE):
+        if not _juenger_als(kand.get("veroeffentlicht"), max_alter_tage):
             zu_alt += 1
             continue
         kandidaten.append(kand)
         eintrag = protokoll.get(it.get("searchQuery"))
         if eintrag is not None:
             eintrag["gefunden"] += 1
-    print("[apify] TikTok-Suche: %d Begriffe, %d Roh-Treffer (%d zu alt, > %d Tage)"
-          % (len(queries), len(kandidaten), zu_alt, TIKTOK_MAX_ALTER_TAGE))
+    return zu_alt
+
+
+def sammle_tiktok_suche(queries, fehler, fenster=None):
+    """
+    TikTok-Keyword-Suche über den Apify-Actor (clockworks). Findet Falschinfos
+    von BELIEBIGEN Creators, nicht nur den Watchlist-Profilen.
+    fenster: optional {query: "normal"|"breit"} — breite Begriffe (neu/ertragslos)
+    laufen in einem zweiten Call mit mehr Ergebnissen und weiterem Alter.
+    Rückgabe: (kandidaten, protokoll[{query, gefunden, fehler}]).
+    """
+    kandidaten = []
+    queries = [q for q in queries if q]
+    protokoll = {q: {"query": q, "gefunden": 0, "fehler": False} for q in queries}
+    if not verfuegbar() or not queries:
+        if not verfuegbar():
+            fehler.append("apify tiktok-suche: kein APIFY_TOKEN")
+        return kandidaten, list(protokoll.values())
+
+    normal = [q for q in queries if (fenster or {}).get(q) != "breit"]
+    breit = [q for q in queries if (fenster or {}).get(q) == "breit"]
+    zu_alt = 0
+    if normal:
+        zu_alt += _tiktok_suche_call(normal, TIKTOK_SUCHE_MAX, TIKTOK_MAX_ALTER_TAGE,
+                                     fehler, protokoll, kandidaten)
+    if breit:
+        zu_alt += _tiktok_suche_call(breit, max(TIKTOK_SUCHE_MAX, TIKTOK_BREIT_MAX),
+                                     max(TIKTOK_MAX_ALTER_TAGE, TIKTOK_BREIT_ALTER_TAGE),
+                                     fehler, protokoll, kandidaten)
+    print("[apify] TikTok-Suche: %d Begriffe (%d normal, %d breit), %d Roh-Treffer (%d zu alt)"
+          % (len(queries), len(normal), len(breit), len(kandidaten), zu_alt))
     return kandidaten, list(protokoll.values())
 
 
-def sammle_instagram_hashtags(hashtags, fehler):
+def sammle_instagram_hashtags(hashtags, fehler, fenster=None):
     """
     Instagram-HASHTAG-Suche über den bestehenden IG-Actor (Tag-Seiten-URLs).
     Ergänzt die Profil-basierte Suche um Funde beliebiger Creators.
+    fenster: optional {tag: "normal"|"breit"} (breit = mehr Posts, weiteres Alter).
     Rückgabe: (kandidaten, protokoll[{query, gefunden, fehler}]).
     """
     kandidaten = []
@@ -684,18 +725,20 @@ def sammle_instagram_hashtags(hashtags, fehler):
     if not verfuegbar() or not tags:
         return kandidaten, list(protokoll.values())
 
-    ig_eingabe_extra = {}
-    grenze = _alter_grenze_datum(IG_MAX_ALTER_TAGE)
-    if grenze:
-        # Nur Posts ab Stichtag (Nachfilter unten erzwingt es zusaetzlich).
-        ig_eingabe_extra["onlyPostsNewerThan"] = grenze
     zu_alt = 0
     for tag in tags:
+        breit = (fenster or {}).get(tag) == "breit" or (fenster or {}).get("#" + tag) == "breit"
+        max_alter = max(IG_MAX_ALTER_TAGE, IG_BREIT_ALTER_TAGE) if breit else IG_MAX_ALTER_TAGE
+        ig_eingabe_extra = {}
+        grenze = _alter_grenze_datum(max_alter)
+        if grenze:
+            # Nur Posts ab Stichtag (Nachfilter unten erzwingt es zusaetzlich).
+            ig_eingabe_extra["onlyPostsNewerThan"] = grenze
         try:
             items = _run_sync(IG_ACTOR, {
                 "directUrls": ["https://www.instagram.com/explore/tags/%s/" % tag],
                 "resultsType": "posts",
-                "resultsLimit": IG_HASHTAG_MAX,
+                "resultsLimit": max(IG_HASHTAG_MAX, IG_BREIT_MAX) if breit else IG_HASHTAG_MAX,
                 "addParentData": True,
                 **ig_eingabe_extra,
             })
@@ -709,7 +752,7 @@ def sammle_instagram_hashtags(hashtags, fehler):
             kand = _item_zu_kandidat(it, {}, "claim_suche")
             if kand is None:
                 continue
-            if not _juenger_als(kand.get("veroeffentlicht"), IG_MAX_ALTER_TAGE):
+            if not _juenger_als(kand.get("veroeffentlicht"), max_alter):
                 zu_alt += 1
                 continue
             kand["quelle_query"] = "#" + tag

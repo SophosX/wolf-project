@@ -51,36 +51,71 @@ def _lokaler_scrape_plan():
     }
 
 
-def _cooldown_filter(plattform, queries):
-    """Queries entfernen, die innerhalb des Cooldowns schon gescrapt wurden."""
-    if not queries:
-        return []
-    import datetime
-    zeilen = speicher._supabase_get("scrape_status", {
-        "select": "query_norm,zuletzt", "plattform": "eq." + plattform,
-    }) or []
-    grenze = (datetime.datetime.now(datetime.timezone.utc)
-              - datetime.timedelta(hours=QUERY_COOLDOWN_STUNDEN)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    kuerzlich = {z["query_norm"] for z in zeilen
-                 if z.get("zuletzt") and z["zuletzt"] > grenze}
-    frisch = [q for q in queries if q.strip().lower() not in kuerzlich]
-    if len(frisch) < len(queries):
-        logger.info("Cooldown %s: %d/%d Queries uebersprungen (<%dh).",
-                    plattform, len(queries) - len(frisch), len(queries),
-                    QUERY_COOLDOWN_STUNDEN)
-    return frisch
+# "Jetzt suchen" eines Nutzers: seine Queries umgehen den normalen Cooldown,
+# aber nicht oefter als alle N Stunden (Spam-/Kostenschutz).
+BEVORZUGT_MIN_STUNDEN = float(os.environ.get("RADAR_BEVORZUGT_MIN_H", "1") or "1")
+
+# YouTube-Zeitfenster (streamers~youtube-scraper dateFilter). Die Kosten sind
+# pay-per-result und durch maxResults gedeckelt — ein weiteres Fenster kostet
+# also NICHT mehr, es liefert nur eher volle Trefferlisten.
+YT_FENSTER_BASIS = os.environ.get("RADAR_YT_APIFY_DATEFILTER", "week").strip() or "week"
+YT_FENSTER_STUFEN = ["week", "month", "year"]
 
 
-def lade_scrape_plan():
+def lade_status_map():
+    """scrape_status komplett als {(plattform, query_norm): zeile}."""
+    zeilen = speicher._supabase_get("scrape_status", {"select": "*"}) or []
+    return {(z.get("plattform"), z.get("query_norm")): z for z in zeilen}
+
+
+def query_norm(q):
+    return (q or "").strip().lstrip("#").lower()
+
+
+def fenster_fuer(plattform, status_zeile):
+    """Adaptive Suchbreite je Query aus der Ertragshistorie:
+    - nie gescrapt (Neu-Nutzer/neue Query): direkt breit -> erste Funde SOFORT
+    - zuletzt Treffer: Basis-Fenster (guenstig, frisch)
+    - 1x leer: eine Stufe breiter, >=2x leer: maximal breit
+    YouTube: today/week/month/year; TikTok/Instagram: normal|breit."""
+    nie = not status_zeile or not status_zeile.get("zuletzt")
+    leer = int((status_zeile or {}).get("leer_folge") or 0)
+    if plattform == "youtube":
+        if nie or leer >= 2:
+            return "year" if leer >= 2 else "month"
+        if leer == 1:
+            try:
+                i = YT_FENSTER_STUFEN.index(YT_FENSTER_BASIS)
+            except ValueError:
+                i = 0
+            return YT_FENSTER_STUFEN[min(i + 1, len(YT_FENSTER_STUFEN) - 1)]
+        return YT_FENSTER_BASIS
+    return "breit" if (nie or leer >= 1) else "normal"
+
+
+def lade_scrape_plan(bevorzugt_user=None):
     """Der Akquise-Plan dieses Laufs: {youtube: [...], tiktok: [...],
-    instagram_hashtags: [...], watchlist: [eintraege]}."""
+    instagram_hashtags: [...], watchlist: [eintraege],
+    fenster: {plattform: {query: fenster}}}.
+    bevorzugt_user: dessen Queries laufen OHNE Rotations-Cap und ohne den
+    24h-Cooldown ("Jetzt suchen" eines Nutzers muss SEINE Suche ausloesen)."""
     if speicher.daten_modus() != "supabase":
-        return _lokaler_scrape_plan()
+        plan = _lokaler_scrape_plan()
+        plan["fenster"] = {}
+        return plan
 
     import datetime
     import plan_limits
 
-    plan = {"youtube": [], "tiktok": [], "instagram_hashtags": [], "watchlist": []}
+    plan = {"youtube": [], "tiktok": [], "instagram_hashtags": [], "watchlist": [],
+            "fenster": {"youtube": {}, "tiktok": {}, "instagram": {}}}
+    status_map = lade_status_map()
+    jetzt = datetime.datetime.now(datetime.timezone.utc)
+    cooldown_grenze = (jetzt - datetime.timedelta(hours=QUERY_COOLDOWN_STUNDEN)
+                       ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    bevorzugt_grenze = (jetzt - datetime.timedelta(hours=BEVORZUGT_MIN_STUNDEN)
+                        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    bevorzugt_user = str(bevorzugt_user) if bevorzugt_user else None
 
     # Per-User-Query-Cap mit Tages-Rotation: jeder Nutzer traegt maximal
     # limits['queries_pro_lauf'] Queries zum Lauf bei (Admin-Override moeglich).
@@ -104,28 +139,42 @@ def lade_scrape_plan():
         je_user.setdefault(uid, []).append(z)
     tag = datetime.datetime.now(datetime.timezone.utc).timetuple().tm_yday
     gesehen = set()
-    for uid, qs in je_user.items():
+    uebersprungen = 0
+    # Bevorzugter Nutzer zuerst, damit seine Queries den Dedupe "gewinnen"
+    reihenfolge = sorted(je_user.keys(), key=lambda u: 0 if u == bevorzugt_user else 1)
+    for uid in reihenfolge:
+        qs = je_user[uid]
+        ist_bevorzugt = (uid == bevorzugt_user)
         cap = int(limits_je_user[uid].get("queries_pro_lauf") or 12)
-        if len(qs) > cap:
+        if len(qs) > cap and not ist_bevorzugt:
             start = (tag * cap) % len(qs)
             qs = (qs + qs)[start:start + cap]
             logger.info("Query-Rotation %s: %d von %d Queries in diesem Lauf.",
                         uid, cap, len(je_user[uid]))
         for z in qs:
             p = z.get("plattform")
-            norm = (p, z.get("query", "").strip().lower())
-            if not norm[1] or norm in gesehen:
+            norm = (p, query_norm(z.get("query")))
+            if not norm[1] or norm in gesehen or p not in ("youtube", "tiktok", "instagram"):
+                continue
+            zeile = status_map.get(norm)
+            zuletzt = (zeile or {}).get("zuletzt") or ""
+            grenze = bevorzugt_grenze if ist_bevorzugt else cooldown_grenze
+            if zuletzt and zuletzt > grenze:
+                uebersprungen += 1
                 continue
             gesehen.add(norm)
+            text = z.get("query", "").strip()
+            fenster = fenster_fuer(p, zeile)
             if p == "instagram":
-                plan["instagram_hashtags"].append(z.get("query", "").lstrip("#"))
-            elif p in plan:
-                plan[p].append(z.get("query", ""))
-
-    for p in ("youtube", "tiktok"):
-        plan[p] = _cooldown_filter(p, [q for q in plan[p] if q])
-    plan["instagram_hashtags"] = _cooldown_filter(
-        "instagram", [h for h in plan["instagram_hashtags"] if h])
+                plan["instagram_hashtags"].append(text.lstrip("#"))
+                plan["fenster"]["instagram"][text.lstrip("#")] = fenster
+            else:
+                plan[p].append(text)
+                plan["fenster"][p][text] = fenster
+    if uebersprungen:
+        logger.info("Cooldown: %d Queries uebersprungen (<%dh%s).", uebersprungen,
+                    QUERY_COOLDOWN_STUNDEN,
+                    ", bevorzugt <%gh" % BEVORZUGT_MIN_STUNDEN if bevorzugt_user else "")
 
     # Watchlist-Profile (dedupliziert ueber alle Nutzer) im Format der
     # bisherigen watchlist.json-Eintraege {name, youtube, tiktok, instagram}.
@@ -145,22 +194,60 @@ def lade_scrape_plan():
 
     # Leerer Plan (noch keine aktiven Nutzer/Queries in der DB) -> Lokal-Plan
     # als Seed, damit der Akquise-Lauf nach dem Cutover nicht leerlaeuft.
+    # Leerer Plan: Entweder sind alle Queries im Cooldown (normal, dann NICHT
+    # den Seed-Katalog scrapen — das kostete frueher jedes Mal Geld) oder es
+    # gibt noch gar keine Nutzer-Queries (dann Seed).
     if not any((plan["youtube"], plan["tiktok"], plan["instagram_hashtags"])):
-        logger.warning("Scrape-Plan aus DB leer — nutze mythen_katalog als Seed.")
-        lokal = _lokaler_scrape_plan()
-        lokal["watchlist"] = plan["watchlist"] or lokal["watchlist"]
-        return lokal
+        if not zeilen:
+            logger.warning("Scrape-Plan aus DB leer — nutze mythen_katalog als Seed.")
+            lokal = _lokaler_scrape_plan()
+            lokal["watchlist"] = plan["watchlist"] or lokal["watchlist"]
+            lokal["fenster"] = {}
+            return lokal
+        logger.info("Scrape-Plan: alle Queries im Cooldown — nur Watchlist in diesem Lauf.")
     return plan
 
 
-def markiere_gescrapte(plattform, queries):
-    """Nach dem Scrapen: scrape_status upserten (Cooldown-Grundlage)."""
+def markiere_gescrapte(plattform, queries, protokoll=None, fenster=None):
+    """Nach dem Scrapen: scrape_status upserten — Cooldown-Grundlage UND
+    Ertragsstatistik (letzte_treffer, leer_folge, fenster) fuer die adaptive
+    Suchbreite und die Nutzer-Rueckmeldung ("Begriff X fand 3x nichts")."""
     if speicher.daten_modus() != "supabase" or not queries:
         return
-    zeilen = [{"plattform": plattform, "query_norm": q.strip().lower(),
-               "zuletzt": speicher.jetzt_iso()} for q in queries if q.strip()]
-    speicher._supabase_post("scrape_status", zeilen,
-                            prefer="return=minimal,resolution=merge-duplicates")
+    treffer = {}
+    for p in protokoll or []:
+        treffer[query_norm(p.get("query"))] = int(p.get("gefunden") or 0)
+    fehler = {query_norm(p.get("query")) for p in (protokoll or []) if p.get("fehler")}
+    alt = {}
+    try:
+        zeilen = speicher._supabase_get("scrape_status", {
+            "select": "query_norm,treffer_gesamt,leer_folge,fehler_folge",
+            "plattform": "eq." + plattform}) or []
+        alt = {z["query_norm"]: z for z in zeilen}
+    except Exception as e:
+        logger.debug("scrape_status nicht lesbar: %s", e)
+    jetzt = speicher.jetzt_iso()
+    upserts = []
+    for q in queries:
+        norm = query_norm(q)
+        if not norm:
+            continue
+        a = alt.get(norm) or {}
+        n = treffer.get(norm, 0)
+        zeile = {"plattform": plattform, "query_norm": norm, "zuletzt": jetzt,
+                 "letzte_treffer": n,
+                 "treffer_gesamt": int(a.get("treffer_gesamt") or 0) + n,
+                 "fehler_folge": (int(a.get("fehler_folge") or 0) + 1) if norm in fehler else 0,
+                 "fenster": (fenster or {}).get(q) or (fenster or {}).get(norm)}
+        if norm in fehler:
+            # Gestoerter Lauf ist kein Urteil ueber den Begriff
+            zeile["leer_folge"] = int(a.get("leer_folge") or 0)
+        else:
+            zeile["leer_folge"] = 0 if n > 0 else int(a.get("leer_folge") or 0) + 1
+        upserts.append(zeile)
+    if upserts:
+        speicher._supabase_post("scrape_status", upserts,
+                                prefer="return=minimal,resolution=merge-duplicates")
 
 
 # ---------------------------------------------------------------------------

@@ -679,7 +679,10 @@ def lade_pool_neu(seit_iso, mit_claim=True):
     """Pool-Videos fuer die Kuration: seit `seit_iso` gefunden, mit extrahiertem
     Claim (Stufe A/B gelaufen). Paginierend, komplette Zeilen."""
     alle, seite = [], 0
-    params_basis = {"select": "*", "gefunden_am": "gte." + seit_iso,
+    # gefunden_am ODER aktualisiert_am im Fenster: Claims, die erst spaeter
+    # (Backfill/Nachanalyse) extrahiert wurden, sollen nicht durchs Raster fallen.
+    params_basis = {"select": "*",
+                    "or": "(gefunden_am.gte.%s,aktualisiert_am.gte.%s)" % (seit_iso, seit_iso),
                     "order": "gefunden_am.desc"}
     if mit_claim:
         params_basis["claim"] = "not.is.null"

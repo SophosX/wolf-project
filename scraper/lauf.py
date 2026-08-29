@@ -441,6 +441,8 @@ def main():
                         help="Backfill: bestehende Videos ohne Transkript nachtranskribieren, kein Scraping")
     parser.add_argument("--neubewertung", action="store_true",
                         help="Bestand ohne Websuche-Verifikation neu analysieren (inkl. Transkript-Nachholung), kein Scraping")
+    parser.add_argument("--user", default=None,
+                        help="'Jetzt suchen' dieses Nutzers: seine Queries laufen ohne Rotation/Cooldown")
     args = parser.parse_args()
 
     if args.nachanalyse:
@@ -455,7 +457,8 @@ def main():
     # (deduplizierte Queries ALLER aktiven Nutzer), nur Stufe A/B (neutraler
     # Claim), KEIN Verdict/Score/Skript — das macht kuration.py pro Nutzer.
     akquise = speicher.daten_modus() == "supabase"
-    scrape_plan = themenwelt.lade_scrape_plan()
+    scrape_plan = themenwelt.lade_scrape_plan(bevorzugt_user=args.user)
+    fenster_plan = scrape_plan.get("fenster") or {}
     watchlist = scrape_plan.get("watchlist") or lade_watchlist()
     speicher.stelle_einstellungen_sicher()
 
@@ -521,7 +524,8 @@ def main():
                 print("[lauf] instagram: Apify-Modus (APIFY_TOKEN gesetzt)")
                 return apify_agent.sammle_instagram(
                     watchlist,
-                    hashtags=scrape_plan.get("instagram_hashtags") if akquise else None)
+                    hashtags=scrape_plan.get("instagram_hashtags") if akquise else None,
+                    fenster=fenster_plan.get("instagram") if akquise else None)
         except ImportError:
             pass
         return instagram_agent.sammle(watchlist)
@@ -540,9 +544,11 @@ def main():
     agenten = {
         "youtube": lambda: youtube_agent.sammle(
             watchlist, extra_queries=extra_queries,
-            queries=scrape_plan.get("youtube") if akquise else None),
+            queries=scrape_plan.get("youtube") if akquise else None,
+            fenster=fenster_plan.get("youtube") if akquise else None),
         "tiktok": lambda: tiktok_agent.sammle(
-            watchlist, queries=scrape_plan.get("tiktok") if akquise else None),
+            watchlist, queries=scrape_plan.get("tiktok") if akquise else None,
+            fenster=fenster_plan.get("tiktok") if akquise else None),
         "instagram": instagram_sammeln,
     }
 
@@ -659,7 +665,9 @@ def main():
                     plan_queries = (scrape_plan.get(quelle)
                                     if quelle != "instagram"
                                     else scrape_plan.get("instagram_hashtags"))
-                    themenwelt.markiere_gescrapte(quelle, plan_queries or [])
+                    themenwelt.markiere_gescrapte(
+                        quelle, plan_queries or [], protokoll=such_protokoll,
+                        fenster=fenster_plan.get(quelle) or {})
                 except Exception as e:
                     print("[lauf] WARNUNG: scrape_status nicht aktualisiert: %s" % e)
             neu, gesamt_neu, gesamt_aktualisiert = n, gesamt_neu + n, gesamt_aktualisiert + a

@@ -37,7 +37,10 @@ def bearbeite(auftrag):
         # "Jetzt suchen": frische Akquise (Cooldown haelt die Kosten klein —
         # kuerzlich gescrapte Queries werden uebersprungen), dann Kuration
         # fuer den anfragenden Nutzer.
-        ok = _run([sys.executable, "-u", "lauf.py", "--nur", "youtube,tiktok"])
+        cmd = [sys.executable, "-u", "lauf.py", "--nur", "youtube,tiktok"]
+        if user_id:
+            cmd += ["--user", str(user_id)]
+        ok = _run(cmd)
         if user_id:
             ok = _run([sys.executable, "-u", "kuration.py", "--user", str(user_id)]) and ok
         return ok

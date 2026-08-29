@@ -440,3 +440,14 @@ $$;
 -- Phase 2 (Embeddings/RAG-Befüllung) nutzt narrativ_chunks.embedding +
 -- match_narrativ() — Schema dafür ist oben bereits vollständig angelegt.
 -- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- 2026-08-29 (QA "kaum Videos"): Ertragsstatistik je Suchbegriff fuer die
+-- adaptive Suchbreite + Nutzer-Rueckmeldung ("Begriff X fand 3x nichts").
+--   letzte_treffer: Roh-Treffer im letzten Lauf
+--   leer_folge:     Laeufe in Folge ohne Treffer (0 = zuletzt Treffer)
+--   fenster:        zuletzt genutztes Zeitfenster (today/week/month/year|breit)
+-- ----------------------------------------------------------------------------
+alter table scrape_status add column if not exists letzte_treffer integer default 0;
+alter table scrape_status add column if not exists leer_folge integer default 0;
+alter table scrape_status add column if not exists fenster text;

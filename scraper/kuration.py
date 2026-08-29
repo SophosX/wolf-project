@@ -113,7 +113,20 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
         seit = _letzter_kurationslauf(uid) or _iso_vor_tagen(POOL_FENSTER_TAGE_ERSTLAUF)
         pool = speicher.lade_pool_neu(seit)
     bereits = speicher.zugeordnete_video_ids(uid)
-    kandidaten = [v for v in pool if v.get("id") and v["id"] not in bereits]
+    # NUR Videos mit extrahierter Kernaussage sind Kandidaten. Aussortierte
+    # (claim.aussage=null) belegten sonst per Keyword-Treffer die Top-K-Plaetze
+    # und wurden dann still uebersprungen -> "bewertet werden=10, 0 zugeordnet".
+    ohne_aussage = 0
+    kandidaten = []
+    for v in pool:
+        if not v.get("id") or v["id"] in bereits:
+            continue
+        if not ((v.get("claim") or {}).get("aussage") or "").strip():
+            ohne_aussage += 1
+            continue
+        kandidaten.append(v)
+    diagnose = {"pool": len(pool), "kandidaten": len(kandidaten),
+                "ohne_aussage": ohne_aussage, "themen": len(themen)}
 
     # --- Deterministisches Matching ----------------------------------------
     gematcht = []
@@ -161,6 +174,8 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
                 gematcht.append((score, slug, v))
                 gematcht_ids.add(vid)
                 semantisch += 1
+    diagnose["keyword"] = len(gematcht) - semantisch
+    diagnose["semantisch"] = semantisch
     if semantisch:
         print("[kuration] %s: +%d semantische Kandidaten (Pool-Vernetzung)"
               % (uid, semantisch))
@@ -203,6 +218,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
             continue
         gefiltert.append(eintrag)
     gematcht = gefiltert
+    diagnose["gate_verworfen"] = gate_verworfen
     if gate_verworfen:
         print("[kuration] %s: relevanz_gate=%d Kandidaten verworfen (zu themenfern)"
               % (uid, gate_verworfen))
@@ -220,7 +236,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     wissensbasis = themenwelt.wissensbasis_aus_profil(profil, watchlist)
     narrativ_fn = themenwelt.narrativ_fn_fuer(uid)
 
-    zuordnungen, geflaggt = [], 0
+    zuordnungen, geflaggt, korrekt = [], 0, 0
     for _, slug, video in auswahl:
         # Kopie: bewerte_kandidat/_markiere_verworfen mutieren das Dict, der
         # Pool-Ausschnitt wird aber fuer ALLE Nutzer wiederverwendet.
@@ -246,6 +262,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
 
         if ergebnis is None:
             # 'korrekt' — als archiv-Zuordnung festhalten (Dedupe: nie wieder bewerten)
+            korrekt += 1
             claim = video.get("claim") or {}
             zuordnungen.append({
                 "video_id": video["id"], "status": "archiv", "thema_slug": slug,
@@ -271,11 +288,16 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
         })
 
     gespeichert = speicher.speichere_zuordnungen(uid, zuordnungen)
+    diagnose.update({"bewertet": len(auswahl), "korrekt": korrekt,
+                     "geflaggt": geflaggt, "gematcht": len(gematcht),
+                     "warteschlange": max(0, len(gematcht) - len(auswahl))})
     protokoll = {
         "user_id": str(uid), "typ": "kuration", "quelle": "kuration",
         "gefunden": len(kandidaten), "neu": gespeichert,
         "analysiert": len(auswahl), "geflaggt": geflaggt,
         "fehler": fehler, "dauer_s": int(time.time() - start),
+        # Diagnose fuers UI ("warum ist meine Inbox leer?")
+        "detail": diagnose,
     }
     speicher.speichere_agent_run(protokoll)
     print("[kuration] %s: %d zugeordnet (%d geflaggt), %d Fehler, %ds"
