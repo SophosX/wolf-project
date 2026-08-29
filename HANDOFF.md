@@ -44,9 +44,19 @@ Branch `feat/multi-tenant`, deployed. Vorheriger Stand (2026-07-11 Cutover) daru
   erweitern“, Hinweis auf strittige Funde). `/einstellungen` zeigt Ertrag je Query. Onboarding
   legt Starter-Pack reihum über Bereiche an und meldet Plan-Cap-Verluste im Review.
 
-**Ergebnis Peter:** vorher 1 Zuordnung (archiv). Jetzt 11 strittig + 7 archiv (0 inbox, weil
-Stufe C bei Kurzvideos ohne Transkript/Konfidenz <0.75 konservativ „strittig“ vergibt — Diagnose
-verweist auf den Strittig-Tab).
+**Zweite Runde (User: „nur strittige Zuordnungen ist dumm“):** Peter hatte nach der ersten Runde
+11 strittig / 0 inbox. Ursache: Stufe C bewertete gegen **Christians Positionstabelle** (Fallback
+für Nutzer ohne eigene Positionen) und durfte nur dort Gedecktes flaggen → Medizin-Claims
+„außerhalb des Kernbereichs“ = strittig (0.9). Fix (fd2530a):
+- `themenwelt.massstab_text()`: Maßstab je Nutzer = Positionen (falls vorhanden) + Nische +
+  Trigger-Liste + Themen; Standard-Tenant behält seine `themenlandkarte.md`.
+- Neues Verdict **`irrefuehrend`** (nicht widerlegt, aber als Botschaft irreführend: unbelegte
+  Heils-/Rendite-Versprechen, Ferndiagnosen, absolute Ansprüche) → **inbox ab Konfidenz 0.75**
+  wie `klar_falsch`. Sicherheitsnetze (Debunk, Kurzvideo ohne Transkript) gelten weiter.
+- Nachschub-Garantie in `kuration.py`: zweiter Bewertungs-Batch bis 2× Plan-Cap, solange die
+  Inbox < `RADAR_INBOX_MIN` (3); bleibt sie leer → automatischer Suchlauf (`auftraege` typ=lauf
+  für den Nutzer, max. alle `RADAR_NACHSCHUB_H`=8 h, Marker `einstellungen.nachschub_auto`).
+- UI: „Warum irreführend:“ auf der Karte; `KONTRAKT.md` ergänzt.
 
 **Offen / beobachten:**
 - Apify-Kosten nach den breiteren Fenstern 2–3 Tage beobachten (`GET api.apify.com/v2/users/me/limits`),
