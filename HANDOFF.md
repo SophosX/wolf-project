@@ -58,6 +58,25 @@ für Nutzer ohne eigene Positionen) und durfte nur dort Gedecktes flaggen → Me
   für den Nutzer, max. alle `RADAR_NACHSCHUB_H`=8 h, Marker `einstellungen.nachschub_auto`).
 - UI: „Warum irreführend:“ auf der Karte; `KONTRAKT.md` ergänzt.
 
+**Review-Runde (3 Prüf-Agenten, Commit c354274):** `lauf.py --user` scrapt nur die Queries des
+Nutzers (Kosten!), Worker läuft unter `/tmp/radar.lock` und setzt `RADAR_AUFTRAG_ID`, `irrefuehrend`
+durchläuft die Websuche (nuanciert/unklar demotet nicht), `suchhilfe` mit `on_conflict`, Ertrag nur
+für wirklich gesuchte Begriffe, breite Suche auf `RADAR_MAX_ALTER_TAGE` gedeckelt, Kuration:
+`match_pool` im 14-Tage-Fenster, Watchlist umgeht das Gate, Fehler → `archiv`, Nachschlag nur
+innerhalb `kuration_pro_tag`. App: `scrape_status` nur für eigene Norms, „Breiter suchen“ fasst nur
+ertragslose eigene Begriffe an und überschreibt `zuletzt` nicht, Empfehlungslogik gehärtet,
+Onboarding-Upserts prüfen Fehler. Gemeinsame Normalisierung `lib/suchnorm.ts` ↔
+`themenwelt.query_norm`.
+
+**Ergebnis nach Reset + Neu-Kuration (17:50 UTC):** Peter **7 inbox** (klar_falsch/irrefuehrend
+mit Websuche-Belegen, z. B. „OPs in 9 von 10 Fällen überflüssig“, Impf-Verschwörung) + 3 archiv;
+Finanztest 2 inbox, Labeltest 1 inbox.
+
+**Betriebsregeln neu:** `_supabase_speichere_videos` patcht claim/kategorie/embedding NICHT für
+bestehende Zeilen — nach Prompt-/Kategorie-Änderungen ist `backfill_neutral.py` Pflicht.
+Peters/Test-Zuordnungen ohne Feedback dürfen bei Logik-Änderungen zurückgesetzt werden
+(`delete … where feedback='[]'`), damit die Kuration neu bewertet.
+
 **Offen / beobachten:**
 - Apify-Kosten nach den breiteren Fenstern 2–3 Tage beobachten (`GET api.apify.com/v2/users/me/limits`),
   Ziel <1 $/Tag; Stellschrauben `RADAR_YT_APIFY_BREIT_RESULTS`, `RADAR_TIKTOK_APIFY_BREIT_MAX`.
