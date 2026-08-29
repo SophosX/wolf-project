@@ -370,7 +370,11 @@ def _tage_seit(iso_zeit):
 # Stufe A + B: Relevanz-Filter + Claim-Extraktion (gebündelt, mit ID-Echo)
 # ---------------------------------------------------------------------------
 
-def _schema_stufe_ab(themen_slugs):
+def _schema_stufe_ab(themen_slugs, neutral=False):
+    themenbezug_text = ("Gehoert das Video zu einer der genannten Creator-Nischen?"
+                        if neutral else "Ernährung/Fitness/Gesundheit?")
+    thema_text = ("Bereich, in den die Aussage faellt ('sonstiges' nur, wenn wirklich keiner passt)"
+                  if neutral else "passendster Themen-Slug")
     return {
         "type": "OBJECT",
         "properties": {
@@ -382,12 +386,13 @@ def _schema_stufe_ab(themen_slugs):
                         "id": {"type": "STRING", "description": "exakt die übergebene Video-ID"},
                         "deutsch": {"type": "BOOLEAN"},
                         "themenbezug": {"type": "BOOLEAN",
-                                        "description": "Ernährung/Fitness/Gesundheit?"},
+                                        "description": themenbezug_text},
                         "sachaussage": {"type": "BOOLEAN",
                                         "description": "prüfbare Sachaussage vorhanden (nicht bloß Meinung/Werbung/Rezept)?"},
                         "aussage": {"type": "STRING",
                                     "description": "konkreteste prüfbare Aussage, möglichst wörtlich"},
-                        "thema": {"type": "STRING", "enum": themen_slugs},
+                        "thema": {"type": "STRING", "enum": themen_slugs,
+                                  "description": thema_text},
                         "begruendung": {"type": "STRING"},
                     },
                     "required": ["id", "deutsch", "themenbezug", "sachaussage", "begruendung"],
@@ -446,14 +451,62 @@ auch Aufklärungs-/Debunk-Videos haben eine prüfbare Sachaussage und passieren 
 Gib für jede übergebene ID GENAU EIN Ergebnis zurück und übernimm die ID unverändert."""
 
 
-def _stufe_ab_batch(kandidaten, themen_slugs, nische=None):
+def _system_stufe_ab_neutral(nische=None):
+    """Mandantenneutrale Variante fuer den GETEILTEN Pool (Akquise): nicht eine
+    Nische, sondern ALLE Creator-Nischen der Plattform. Ein Video wird nur
+    aussortiert, wenn es in KEINE Nische passt oder keine pruefbare Sachaussage
+    enthaelt — welcher Nutzer es bekommt, entscheidet spaeter die Kuration."""
+    nische = (nische or "alle Themenfelder, in denen Creator Falschinformationen "
+              "richtigstellen (Ernährung, Fitness, Finanzen, Krypto, Medizin, Psychologie, "
+              "Tech, Beauty, Klima, Recht, Elternschaft, Wissenschaft)").strip()
+    return """Du bist der Vorfilter eines Debunk-Radars — einer Plattform, auf der Creator
+aus VERSCHIEDENEN Nischen Videos mit Falschinformationen aus ihrem Feld finden.
+
+ABGEDECKTE NISCHEN: """ + nische + """
+
+Prüfe JEDEN übergebenen Video-Kandidaten auf genau drei Kriterien:
+1. deutsch: Ist der Inhalt (Titel/Caption/Transkript) deutschsprachig?
+2. themenbezug: Gehört das Video thematisch zu (mindestens) einer der abgedeckten Nischen?
+   Sei hier GROSSZÜGIG — Gesundheit, Psyche, Geld, Beauty, Technik, Klima, Recht, Erziehung
+   und Wissenschaft sind alle abgedeckt. Nur reine Unterhaltung/Vlogs/Gaming/Musik ohne
+   Sachbehauptung fallen raus.
+3. sachaussage: Enthält das Video mindestens eine KONKRETE, PRÜFBARE Sachaussage mit
+   Behauptungscharakter (z. B. über Wirkung, Ursache, Risiko, Rendite, Rechtslage,
+   Diagnose-Kriterien, Studienlage — etwas, das man faktisch prüfen kann)?
+   (NICHT ausreichend: bloße Meinung, Geschmacksurteil, reine Werbung, Rezept/Anleitung ohne
+   Behauptung, persönlicher Erfahrungsbericht ohne verallgemeinernde Behauptung, reine
+   Übungs-/Produktempfehlung ohne Wirkungsbehauptung.
+   AUCH NICHT ausreichend: reine META-AUSSAGEN über Industrie, Medien, Studienlage oder
+   Personen — 'die Industrie vertuscht', 'Big Pharma lügt', 'gekaufte Studien' — ohne eine
+   konkrete Sach-Behauptung dahinter.)
+
+Wenn alle drei Kriterien erfüllt sind, zusätzlich:
+- aussage: Extrahiere die KERNBEHAUPTUNG, die das Video dem Zuschauer verkauft — das
+  zentrale Versprechen/These (oft im Titel angeteasert und im Transkript ausgeführt), NICHT
+  einen beiläufigen Nebensatz. Beruft sich das Video auf eine Studie, extrahiere die
+  SCHLUSSFOLGERUNG fürs Publikum, nicht den Studienbericht. Bei Verschwörungs-/Industrie-
+  Rahmung ('vertuscht', 'will nicht, dass du das weißt') ist die Kernbehauptung IMMER die
+  konkrete SACH-Behauptung dahinter (z. B. 'Süßstoffe sind gesundheitsschädlich', 'Mit
+  diesem Coin sind 100 % Rendite sicher'), nie die Meta-Aussage. Wähle NIEMALS einen wahren
+  Teilmechanismus, wenn die verkaufte Schlussfolgerung darüber hinausgeht. Möglichst
+  wörtlich, als VOLLSTÄNDIGER Satz von maximal ~220 Zeichen.
+- thema: Ordne die Aussage dem passendsten Bereich aus der erlaubten Liste zu;
+  'sonstiges' nur, wenn wirklich kein Bereich passt.
+
+Wichtig: In diesem Schritt NICHT bewerten, ob die Aussage wahr oder falsch ist —
+auch Aufklärungs-/Debunk-Videos haben eine prüfbare Sachaussage und passieren diesen Filter.
+Gib für jede übergebene ID GENAU EIN Ergebnis zurück und übernimm die ID unverändert."""
+
+
+def _stufe_ab_batch(kandidaten, themen_slugs, nische=None, neutral=False):
     """Führt Stufe A+B für eine Gruppe Kandidaten in einem Gemini-Aufruf aus."""
     bloecke = []
     for video in kandidaten:
         bloecke.append("=== KANDIDAT ===\n" + _video_kontext(video))
     prompt = "\n\n".join(bloecke)
-    daten = gemini_json(prompt, system=_system_stufe_ab(nische),
-                        schema=_schema_stufe_ab(themen_slugs), temperatur=0.1)
+    system = _system_stufe_ab_neutral(nische) if neutral else _system_stufe_ab(nische)
+    daten = gemini_json(prompt, system=system,
+                        schema=_schema_stufe_ab(themen_slugs, neutral=neutral), temperatur=0.1)
     ergebnisse = {e.get("id"): e for e in daten.get("ergebnisse", [])}
     fehlend = [v.get("id") for v in kandidaten if v.get("id") not in ergebnisse]
     if fehlend:
@@ -461,7 +514,7 @@ def _stufe_ab_batch(kandidaten, themen_slugs, nische=None):
     return ergebnisse
 
 
-def _stufe_ab(kandidaten, themen_slugs, nische=None):
+def _stufe_ab(kandidaten, themen_slugs, nische=None, neutral=False):
     """
     Stufe A+B mit Batching; fällt bei Inkonsistenzen auf Einzel-Aufrufe zurück.
     Rückgabe: {video_id: ergebnis_dict}
@@ -470,12 +523,12 @@ def _stufe_ab(kandidaten, themen_slugs, nische=None):
     for i in range(0, len(kandidaten), BATCH_GROESSE_STUFE_AB):
         gruppe = kandidaten[i:i + BATCH_GROESSE_STUFE_AB]
         try:
-            ergebnisse.update(_stufe_ab_batch(gruppe, themen_slugs, nische))
+            ergebnisse.update(_stufe_ab_batch(gruppe, themen_slugs, nische, neutral=neutral))
         except Exception as fehler:
             logger.warning("Stufe A/B Batch fehlgeschlagen (%s) — versuche Einzelaufrufe.", fehler)
             for video in gruppe:
                 try:
-                    ergebnisse.update(_stufe_ab_batch([video], themen_slugs, nische))
+                    ergebnisse.update(_stufe_ab_batch([video], themen_slugs, nische, neutral=neutral))
                 except Exception as einzel_fehler:
                     logger.error("Stufe A/B endgültig fehlgeschlagen für %s: %s",
                                  video.get("id"), einzel_fehler)
@@ -969,8 +1022,11 @@ def positionen_als_text(positionen):
     return "\n".join(zeilen) if len(zeilen) > 1 else ""
 
 
-def extrahiere_claims(kandidaten, themen_slugs=None, nische=None):
-    """NUR Stufe A+B (mandantenneutral) — fuer den geteilten Akquise-Lauf.
+def extrahiere_claims(kandidaten, themen_slugs=None, nische=None, neutral=False):
+    """NUR Stufe A+B — fuer den geteilten Akquise-Lauf.
+    neutral=True: mandantenneutraler Prompt (ALLE Creator-Nischen, themen_slugs =
+    Bereichs-Slugs des interessen_katalog). Ohne neutral/themen_slugs faellt die
+    Funktion auf den Christian-Katalog zurueck (Lokal-Betrieb).
     Annotiert Kandidaten in place mit video['claim'] = {aussage, thema, ...} bzw.
     verwirft sie (claim.verdict='aussortiert'). Rueckgabe: Liste der Kandidaten
     MIT extrahierter Aussage (Verdict/Score kommen erst in der per-User-Kuration)."""
@@ -978,7 +1034,7 @@ def extrahiere_claims(kandidaten, themen_slugs=None, nische=None):
         return []
     if themen_slugs is None:
         themen_slugs = sorted(lade_themen().keys())
-    ab_ergebnisse = _stufe_ab(kandidaten, themen_slugs, nische)
+    ab_ergebnisse = _stufe_ab(kandidaten, themen_slugs, nische, neutral=neutral)
     mit_claim = []
     for video in kandidaten:
         vid = video.get("id")

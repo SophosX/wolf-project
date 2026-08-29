@@ -481,8 +481,19 @@ def main():
         # Nur Stufe A/B — als batch-kompatible Funktion verpackt
         import analyse as _analyse
 
+        # Mandantenneutral: erlaubte Themen = Bereiche des interessen_katalog,
+        # Nische = alle Creator-Nischen. (Vorher fiel das auf Christians
+        # Ernaehrungs-Katalog zurueck -> jedes Nicht-Ernaehrungs-Video wurde
+        # "aussortiert" und konnte NIE in eine fremde Inbox gelangen.)
+        pool_kategorien = themenwelt.pool_kategorien()
+        try:
+            pool_nische = themenwelt.pool_nische_text()
+        except Exception:
+            pool_nische = None
+
         def analysiere_batch(kandidaten):
-            mit_claim = _analyse.extrahiere_claims(kandidaten)
+            mit_claim = _analyse.extrahiere_claims(
+                kandidaten, themen_slugs=pool_kategorien, nische=pool_nische, neutral=True)
             # Pool-Vernetzung: neutrale Kategorie + Claim-Embedding, damit
             # ALLE Nutzer den Fund finden (Keyword UND semantisch)
             try:
@@ -571,7 +582,7 @@ def main():
                      stat["zu_wenig_views"], MINDEST_VIEWS, stat["nicht_deutsch"],
                      stat["kein_thema"], stat["durch"]))
             status.schritt("%s: %d relevante neue Kandidaten (Rest: bekannt, "
-                           "zu klein oder kein Ernaehrungsthema)" % (qname, stat["durch"]))
+                           "zu klein oder kein passendes Thema)" % (qname, stat["durch"]))
 
             # Transkripte erst NACH dem Vorfilter (spart yt-dlp-Aufrufe).
             # YouTube: erst Auto-Untertitel (billig), dann Audio-Fallback.

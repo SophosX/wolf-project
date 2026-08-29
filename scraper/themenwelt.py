@@ -285,6 +285,38 @@ def _interessen_katalog():
     return _KATALOG_CACHE
 
 
+def pool_kategorien():
+    """Neutrale Bereichs-Slugs des interessen_katalog + 'sonstiges' — die
+    erlaubte Themen-Liste der Stufe A/B im AKQUISE-Modus (geteilter Pool).
+    Damit ist der Pool mandantenneutral: ein Psychologie- oder Finanz-Video
+    wird NICHT mehr als 'kein Ernaehrungsthema' aussortiert."""
+    slugs = [b.get("slug") for b in _interessen_katalog() if b.get("slug")]
+    return slugs + ["sonstiges"]
+
+
+def pool_nische_text(max_nutzer_nischen=10):
+    """Nischen-Beschreibung fuer die neutrale Stufe A/B: alle Katalog-Bereiche
+    plus die individuellen Nischen der aktiven Nutzer (radar_profile.nische)."""
+    labels = [b.get("label") for b in _interessen_katalog() if b.get("label")]
+    extra = []
+    if speicher.daten_modus() == "supabase":
+        try:
+            zeilen = speicher._supabase_get("radar_profile", {"select": "nische"}) or []
+            gesehen = set(l.lower() for l in labels)
+            for z in zeilen:
+                n = (z.get("nische") or "").strip()
+                if n and n.lower() not in gesehen and len(n) <= 120:
+                    gesehen.add(n.lower())
+                    extra.append(n)
+                if len(extra) >= max_nutzer_nischen:
+                    break
+        except Exception as e:
+            logger.debug("Nutzer-Nischen nicht ladbar: %s", e)
+    teile = labels + extra
+    return ("Creator-Nischen, in denen Falschinformationen richtiggestellt werden: "
+            + "; ".join(teile)) if teile else None
+
+
 def kategorisiere(text):
     """Neutraler Bereichs-Slug (interessen_katalog) mit den meisten
     Keyword-Treffern im Text; None ohne Treffer. Deterministisch, kein LLM."""
@@ -316,8 +348,13 @@ def vernetze_pool_kandidaten(kandidaten):
         aussage = ((k.get("claim") or {}).get("aussage") or "").strip()
         if not aussage:
             continue
-        k["kategorie"] = kategorisiere(" ".join(filter(None, [
-            k.get("titel"), aussage, k.get("caption")])))
+        # Bereich bevorzugt aus der neutralen Stufe A/B (LLM), sonst Keywords
+        thema = ((k.get("claim") or {}).get("thema") or "").strip()
+        if thema and thema != "sonstiges" and thema in pool_kategorien():
+            k["kategorie"] = thema
+        else:
+            k["kategorie"] = kategorisiere(" ".join(filter(None, [
+                k.get("titel"), aussage, k.get("caption")])))
         try:
             k["claim_embedding"] = narrativ.embed_text(
                 aussage, dim=768, task="RETRIEVAL_DOCUMENT") or None
