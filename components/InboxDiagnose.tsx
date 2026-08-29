@@ -165,6 +165,13 @@ export default function InboxDiagnose({ inboxAnzahl }: { inboxAnzahl: number }) 
         </p>
       )}
 
+      {d.bestand.strittig > 0 && inboxAnzahl === 0 && (
+        <p className="diagnose-status">
+          Übrigens: <a href="/strittig"><b>{d.bestand.strittig} strittige Funde</b></a> warten auf
+          deinen Blick — Videos, bei denen die KI eine Falschaussage vermutet, aber nicht sicher ist.
+        </p>
+      )}
+
       {/* ---- Suchbegriffe mit Ertrag ---- */}
       {d.queries.filter((q) => q.aktiv).length > 0 && (
         <div className="such-protokoll" style={{ marginTop: 8 }}>

@@ -37,9 +37,15 @@ import plan_limits
 import speicher
 import themenwelt
 
-# Wie weit zurueck der Pool betrachtet wird, wenn der Nutzer noch keinen
-# Kurationslauf hatte (Onboarding: erste Inbox soll nicht leer sein).
-POOL_FENSTER_TAGE_ERSTLAUF = int(os.environ.get("RADAR_KURATION_ERSTLAUF_TAGE", "14"))
+# Wie weit zurueck der Pool je Kurationslauf betrachtet wird. Frueher: nur seit
+# dem letzten Lauf des Nutzers — dadurch fielen Kandidaten, die das Relevanz-
+# Gate knapp verfehlten oder hinter dem Plan-Cap warteten ("Rest naechster
+# Lauf"), fuer immer durchs Raster. Jetzt IMMER ein festes Fenster: bereits
+# zugeordnete Videos werden dedupliziert (kein doppelter LLM-Call), die
+# Bewertungen pro Lauf bleiben durch kuration_max_neu gedeckelt.
+POOL_FENSTER_TAGE = int(os.environ.get("RADAR_KURATION_FENSTER_TAGE",
+                                       os.environ.get("RADAR_KURATION_ERSTLAUF_TAGE", "14")))
+POOL_FENSTER_TAGE_ERSTLAUF = POOL_FENSTER_TAGE
 
 
 def _iso_vor_tagen(tage):
@@ -110,8 +116,7 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
 
     # --- Pool-Ausschnitt laden ---------------------------------------------
     if pool is None:
-        seit = _letzter_kurationslauf(uid) or _iso_vor_tagen(POOL_FENSTER_TAGE_ERSTLAUF)
-        pool = speicher.lade_pool_neu(seit)
+        pool = speicher.lade_pool_neu(_iso_vor_tagen(POOL_FENSTER_TAGE))
     bereits = speicher.zugeordnete_video_ids(uid)
     # NUR Videos mit extrahierter Kernaussage sind Kandidaten. Aussortierte
     # (claim.aussage=null) belegten sonst per Keyword-Treffer die Top-K-Plaetze
@@ -185,12 +190,26 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
     # Kernaussage des Videos. Fachfremde Kategorie => hoehere Huerde.
     MIN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT", "0.66"))
     FREMD_AEHNLICHKEIT = 0.68
+    # Video liegt laut neutraler Stufe A/B (LLM) in einem Interessen-Bereich des
+    # Nutzers: das ist bereits ein starkes Relevanz-Signal, das Embedding muss
+    # nur noch grobe Ausreisser abfangen. Gemessen 2026-08-29 (Starter-Profil
+    # Medizin/Psychologie/Beauty): passende Bereichs-Claims liegen bei
+    # 0.60-0.71, fachfremde (Finanzen/Krypto) ebenfalls bis 0.62 — die trennt
+    # aber schon die Kategorie. Mit 0.66 wurden 39/42 Kandidaten verworfen.
+    EIGEN_AEHNLICHKEIT = float(os.environ.get("RADAR_MATCH_MIN_AEHNLICHKEIT_EIGEN", "0.60"))
     labels = set((profil.get("interessen_profil") or {}).get("interessen_labels") or [])
+    # Embeddings ALLER Nutzer-Themen (gecacht in themen.embedding): Der Keyword-
+    # Treffer ist nur ein Hinweis, welches Thema gemeint sein KOENNTE — gemessen
+    # wird gegen das aehnlichste Thema, und das wird dann auch zugeordnet.
+    # (Vorher: nur gegen das Keyword-Thema -> "trauma"/"erfolg" im Titel band
+    # einen Medizin-Claim an Pop-Psychologie und liess ihn am Gate scheitern.)
     thema_embs = {}
+    for slug_, thema_ in themen.items():
+        thema_embs[slug_] = speicher.hole_thema_embedding(uid, slug_, thema_)
     gate_verworfen = 0
     gefiltert = []
     for eintrag in gematcht:
-        _, slug, v = eintrag
+        score_alt, slug, v = eintrag
         emb_v = v.get("claim_embedding")
         if isinstance(emb_v, str):
             try:
@@ -200,19 +219,23 @@ def kuratiere_nutzer(nutzer, pool=None, limit=None):
         if not emb_v:
             gefiltert.append(eintrag)  # Uebergangsfall: kein Embedding -> durchlassen
             continue
-        if slug not in thema_embs:
-            thema_embs[slug] = speicher.hole_thema_embedding(uid, slug, themen.get(slug) or {})
-        emb_t = thema_embs[slug]
-        if not emb_t:
+        sims = [(_cosine(e, emb_v), s) for s, e in thema_embs.items() if e]
+        if not sims:
             gefiltert.append(eintrag)
             continue
-        sim = _cosine(emb_t, emb_v)
+        sim, bester_slug = max(sims, key=lambda t: t[0])
+        if bester_slug != slug and not _watchlist_treffer(v, watchlist):
+            slug = bester_slug
+            eintrag = (_match_score(v, slug, themen, gelernt, False), slug, v)
         grenze = MIN_AEHNLICHKEIT
         # Hat der Nutzer Interessen-Labels, gilt fuer alles AUSSERHALB davon die
         # hoehere Huerde — auch fuer UNkategorisierte Videos (kategorie=None ist
         # meist fachfremder Watchlist-/Lifestyle-Content, kein Freifahrtschein).
+        # INNERHALB seiner Bereiche reicht die niedrigere Huerde.
         if labels and (v.get("kategorie") not in labels):
             grenze = max(grenze, FREMD_AEHNLICHKEIT)
+        elif labels:
+            grenze = min(grenze, EIGEN_AEHNLICHKEIT)
         if sim < grenze:
             gate_verworfen += 1
             continue
@@ -339,12 +362,9 @@ def main():
     elif not args.alle:
         parser.error("--user <uuid> oder --alle angeben")
 
-    # Pool EINMAL fuer den aeltesten Bedarf laden und fuer alle wiederverwenden
-    aelteste = None
-    for n in nutzer:
-        seit = _letzter_kurationslauf(n["id"]) or _iso_vor_tagen(POOL_FENSTER_TAGE_ERSTLAUF)
-        aelteste = seit if (aelteste is None or seit < aelteste) else aelteste
-    pool = speicher.lade_pool_neu(aelteste or _iso_vor_tagen(POOL_FENSTER_TAGE_ERSTLAUF))
+    # Pool EINMAL laden (festes Fenster) und fuer alle Nutzer wiederverwenden
+    aelteste = _iso_vor_tagen(POOL_FENSTER_TAGE)
+    pool = speicher.lade_pool_neu(aelteste)
     print("[kuration] %d Nutzer, Pool-Fenster seit %s: %d Videos"
           % (len(nutzer), aelteste, len(pool)))
 

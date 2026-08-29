@@ -16,6 +16,7 @@ import {
   zaehleStatus,
 } from "@/lib/daten";
 import { interessenBereiche, starterPack } from "@/lib/interessen";
+import { planLimits } from "@/lib/plan";
 import { naechsteVideoSuche } from "@/lib/zeitplan";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export async function GET() {
       { data: kurationRoh },
       { data: themenRoh },
       { data: profilRoh },
+      { data: kontoRoh },
       angefragt,
       agentStatus,
       zaehler,
@@ -75,6 +77,7 @@ export async function GET() {
         .eq("typ", "kuration").order("zeit", { ascending: false }).limit(1),
       sb.from("themen").select("slug, aktiv").eq("user_id", uid),
       sb.from("radar_profile").select("interessen_profil").eq("user_id", uid).maybeSingle(),
+      sb.from("profiles").select("plan, limits").eq("id", uid).maybeSingle(),
       laufAngefragt(uid),
       holeAgentStatus(),
       zaehleStatus(uid).catch(() => ({} as Record<string, number>)),
@@ -118,11 +121,15 @@ export async function GET() {
       ? { zeit: k.zeit, neu: k.neu || 0, geflaggt: k.geflaggt || 0, detail: (k.detail as any) || {} }
       : null;
 
-    // Interessen-Bereiche ohne einziges aktives Thema (Plan-Cap beim Onboarding)
+    // Interessen-Bereiche ohne einziges aktives Starter-Thema — nur relevant,
+    // wenn das Plan-Cap tatsaechlich erreicht ist (Kanal-Import-Nutzer haben
+    // eigene Themen-Slugs, dort waere die Meldung falsch).
     const labels: string[] =
       ((profilRoh?.interessen_profil as any)?.interessen_labels as string[]) || [];
     const aktiveSlugs = new Set((themenRoh || []).filter((t: any) => t.aktiv).map((t: any) => t.slug));
-    const bereicheOhneThema = interessenBereiche()
+    const limits = planLimits(kontoRoh?.plan, kontoRoh?.limits as any);
+    const capErreicht = aktiveSlugs.size >= limits.themen;
+    const bereicheOhneThema = !capErreicht ? [] : interessenBereiche()
       .filter((b) => labels.includes(b.slug))
       .filter((b) => !starterPack([b.slug]).themen.some((t) => aktiveSlugs.has(t.slug)))
       .map((b) => ({ slug: b.slug, label: b.label, emoji: b.emoji }));
@@ -134,7 +141,8 @@ export async function GET() {
     else if (gesucht.length === 0 || !kuration) empfehlung = "warten";
     else if (zusammenfassung.treffer_letzter === 0 || ohneTreffer.length * 2 >= gesucht.length) {
       empfehlung = "breiter";
-    } else if ((kuration.detail.geflaggt || 0) === 0 && (zaehler.inbox || 0) === 0) {
+    } else if ((kuration.detail.geflaggt || 0) === 0 && (zaehler.inbox || 0) === 0
+               && (zaehler.strittig || 0) === 0) {
       empfehlung = "spezifizieren";
     }
 
