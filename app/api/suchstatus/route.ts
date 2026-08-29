@@ -129,7 +129,11 @@ export async function GET() {
     const aktiveSlugs = new Set((themenRoh || []).filter((t: any) => t.aktiv).map((t: any) => t.slug));
     const limits = planLimits(kontoRoh?.plan, kontoRoh?.limits as any);
     const capErreicht = aktiveSlugs.size >= limits.themen;
-    const bereicheOhneThema = !capErreicht ? [] : interessenBereiche()
+    // Kanal-Import-Nutzer haben eigene Slugs (kein Starter-Pack) — dort ist
+    // "Bereich ohne Thema" kein Signal. Nur wenn ueberhaupt Starter-Themen aktiv sind.
+    const hatStarter = interessenBereiche().some((b) =>
+      starterPack([b.slug]).themen.some((t) => aktiveSlugs.has(t.slug)));
+    const bereicheOhneThema = !(capErreicht && hatStarter) ? [] : interessenBereiche()
       .filter((b) => labels.includes(b.slug))
       .filter((b) => !starterPack([b.slug]).themen.some((t) => aktiveSlugs.has(t.slug)))
       .map((b) => ({ slug: b.slug, label: b.label, emoji: b.emoji }));
